@@ -1,0 +1,60 @@
+name: WearerKey Verification CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Test, Build & Audit Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Vitest Unit & Integration Tests
+        run: pnpm test
+
+      - name: Build Web Frontend
+        run: pnpm --filter @wearerkey/web build
+
+      - name: Run Security & Secret Scan
+        run: npx tsx scripts/security-scan.ts
+
+      - name: Validate Truthfulness & Claims
+        run: npx tsx scripts/check-claims.ts
+
+      - name: Probe YouCam Live Endpoint
+        env:
+          YOUCAM_API_KEY: ${{ secrets.YOUCAM_API_KEY }}
+        run: npx tsx scripts/live-youcam-smoke.ts

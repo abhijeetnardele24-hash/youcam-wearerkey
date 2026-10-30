@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" style="background:#F5F0E7; font-family:'Inter',system-ui,sans-serif;">
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#15201D" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow-wearer" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#1F624F" />
+    </marker>
+    <marker id="arrow-helper" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#70465E" />
+    </marker>
+    <marker id="arrow-rust" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#B64A35" />
+    </marker>
+  </defs>
+
+  <!-- Title Header -->
+  <g transform="translate(50, 45)">
+    <rect x="0" y="-10" width="130" height="24" rx="12" fill="#EBF3F0" stroke="#337D68" stroke-width="1"/>
+    <text x="65" y="6" text-anchor="middle" font-size="11" font-weight="700" fill="#1F624F" letter-spacing="0.5">PROTOCOL ARCHITECTURE</text>
+    <text x="0" y="42" font-family="'Playfair Display', Georgia, serif" font-size="28" font-weight="700" fill="#15201D">WearerKey: Zero-Knowledge Try-On Pipeline</text>
+    <text x="0" y="66" font-size="13" fill="#4A5854">End-to-End Cryptographic Privacy Boundary for Perfect Corp YouCam AI Clothes V4</text>
+  </g>
+
+  <!-- Role A: Wearer (Left) -->
+  <g transform="translate(50, 140)">
+    <rect x="0" y="0" width="260" height="400" rx="8" fill="#FFFFFF" stroke="#337D68" stroke-width="2" filter="url(#shadow)"/>
+    <rect x="0" y="0" width="260" height="44" rx="8" fill="#1F624F"/>
+    <text x="130" y="27" text-anchor="middle" font-size="14" font-weight="700" fill="#FFFFFF">ROLE A: WEARER</text>
+    
+    <!-- Content inside wearer -->
+    <g transform="translate(18, 65)">
+      <rect x="0" y="0" width="224" height="60" rx="4" fill="#EBF3F0" stroke="#C8BFAF"/>
+      <text x="12" y="22" font-size="12" font-weight="700" fill="#1F624F">1. Reference Photo</text>
+      <text x="12" y="42" font-size="10" fill="#4A5854">Kept private on wearer device</text>
+      
+      <rect x="0" y="75" width="224" height="60" rx="4" fill="#EBF3F0" stroke="#C8BFAF"/>
+      <text x="12" y="97" font-size="12" font-weight="700" fill="#1F624F">2. Consent Policy</text>
+      <text x="12" y="117" font-size="10" fill="#4A5854">Categories, cap, expiry token</text>
+
+      <rect x="0" y="150" width="224" height="85" rx="4" fill="#EBF3F0" stroke="#C8BFAF"/>
+      <text x="12" y="172" font-size="12" font-weight="700" fill="#1F624F">3. Private Fitting Mirror</text>
+      <text x="12" y="192" font-size="10" fill="#4A5854">Streams try-on render directly</text>
+      <text x="12" y="210" font-size="9" font-weight="600" fill="#B64A35">Watermarked preview disclaimer</text>
+
+      <rect x="0" y="250" width="224" height="65" rx="4" fill="#EBF3F0" stroke="#C8BFAF"/>
+      <text x="12" y="272" font-size="12" font-weight="700" fill="#1F624F">4. Decision Slip</text>
+      <text x="12" y="292" font-size="10" fill="#4A5854">Approve / Maybe / Pass + safe note</text>
+    </g>
+  </g>
+
+  <!-- Center: Backend Server & YouCam Orchestration -->
+  <g transform="translate(370, 140)">
+    <rect x="0" y="0" width="260" height="400" rx="8" fill="#FFFFFF" stroke="#C8BFAF" stroke-width="2" filter="url(#shadow)"/>
+    <rect x="0" y="0" width="260" height="44" rx="8" fill="#15201D"/>
+    <text x="130" y="27" text-anchor="middle" font-size="14" font-weight="700" fill="#FFFFFF">WEARERKEY SERVER</text>
+
+    <!-- Content inside Server -->
+    <g transform="translate(18, 65)">
+      <rect x="0" y="0" width="224" height="60" rx="4" fill="#FAF7F2" stroke="#C8BFAF"/>
+      <text x="12" y="22" font-size="12" font-weight="700" fill="#15201D">Capability Auth Gate</text>
+      <text x="12" y="42" font-size="10" fill="#4A5854">Hashed token constant-time check</text>
+
+      <rect x="0" y="75" width="224" height="60" rx="4" fill="#FAF7F2" stroke="#C8BFAF"/>
+      <text x="12" y="97" font-size="12" font-weight="700" fill="#15201D">Sharp EXIF Sanitizer</text>
+      <text x="12" y="117" font-size="10" fill="#4A5854">In-memory strip metadata &amp; bounds</text>
+
+      <rect x="0" y="150" width="224" height="85" rx="4" fill="#FBECE8" stroke="#B64A35"/>
+      <text x="12" y="172" font-size="12" font-weight="700" fill="#B64A35">YouCam Clothes V4</text>
+      <text x="12" y="192" font-size="10" fill="#4A5854">Ephemeral async S2S task</text>
+      <text x="12" y="210" font-size="10" fill="#4A5854">Immediate remote purge on fetch</text>
+
+      <rect x="0" y="250" width="224" height="65" rx="4" fill="#FAF7F2" stroke="#C8BFAF"/>
+      <text x="12" y="272" font-size="12" font-weight="700" fill="#15201D">Audit &amp; Receipt Ledger</text>
+      <text x="12" y="292" font-size="10" fill="#4A5854">Signed cryptographic deletion log</text>
+    </g>
+  </g>
+
+  <!-- Role B: Helper (Right) -->
+  <g transform="translate(690, 140)">
+    <rect x="0" y="0" width="260" height="400" rx="8" fill="#FFFFFF" stroke="#8E5F7A" stroke-width="2" filter="url(#shadow)"/>
+    <rect x="0" y="0" width="260" height="44" rx="8" fill="#70465E"/>
+    <text x="130" y="27" text-anchor="middle" font-size="14" font-weight="700" fill="#FFFFFF">ROLE B: HELPER / STYLIST</text>
+
+    <!-- Content inside Helper -->
+    <g transform="translate(18, 65)">
+      <rect x="0" y="0" width="224" height="60" rx="4" fill="#F4EEF2" stroke="#C8BFAF"/>
+      <text x="12" y="22" font-size="12" font-weight="700" fill="#70465E">1. View Permitted Rules</text>
+      <text x="12" y="42" font-size="10" fill="#4A5854">Categories &amp; remaining budget</text>
+
+      <rect x="0" y="75" width="224" height="60" rx="4" fill="#F4EEF2" stroke="#C8BFAF"/>
+      <text x="12" y="97" font-size="12" font-weight="700" fill="#70465E">2. Upload Garment</text>
+      <text x="12" y="117" font-size="10" fill="#4A5854">Product photo &amp; store link</text>
+
+      <rect x="0" y="150" width="224" height="85" rx="4" fill="#F4EEF2" stroke="#8E5F7A"/>
+      <text x="12" y="172" font-size="12" font-weight="700" fill="#70465E">3. Zero-Knowledge Wall</text>
+      <text x="12" y="192" font-size="10" font-weight="700" fill="#B64A35">NO WEARER PHOTOS</text>
+      <text x="12" y="210" font-size="10" fill="#4A5854">No raw URLs or try-on pixels</text>
+
+      <rect x="0" y="250" width="224" height="65" rx="4" fill="#F4EEF2" stroke="#C8BFAF"/>
+      <text x="12" y="272" font-size="12" font-weight="700" fill="#70465E">4. Verdict Slip Receipt</text>
+      <text x="12" y="292" font-size="10" fill="#4A5854">Approve / Maybe / Pass signal</text>
+    </g>
+  </g>
+
+  <!-- Connectors / Flow Lines -->
+  <!-- Wearer to Server -->
+  <line x1="310" y1="230" x2="370" y2="230" stroke="#1F624F" stroke-width="2" marker-end="url(#arrow-wearer)"/>
+  <!-- Server Try-On Stream back to Wearer -->
+  <line x1="370" y1="330" x2="310" y2="330" stroke="#1F624F" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-wearer)"/>
+
+  <!-- Helper to Server -->
+  <line x1="690" y1="230" x2="630" y2="230" stroke="#70465E" stroke-width="2" marker-end="url(#arrow-helper)"/>
+  <!-- Server Verdict signal back to Helper -->
+  <line x1="630" y1="420" x2="690" y2="420" stroke="#70465E" stroke-width="2" marker-end="url(#arrow-helper)"/>
+
+  <!-- Bottom Privacy Disclaimer -->
+  <rect x="50" y="560" width="900" height="26" rx="4" fill="#FAF7F2" stroke="#C8BFAF"/>
+  <text x="500" y="577" text-anchor="middle" font-size="10.5" fill="#4A5854">
+    <tspan font-weight="700" fill="#15201D">VISUAL APPEARANCE PREVIEW ONLY</tspan> — Virtual try-on simulation by YouCam AI Clothes V4. Zero wearer photos shared with helper.
+  </text>
+</svg>

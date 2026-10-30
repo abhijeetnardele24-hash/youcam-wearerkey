@@ -31,8 +31,8 @@ export function loadConfig(env = process.env): Config {
 
   // If YOUCAM_API_KEY is present and not empty, allow LIVE_YOUCAM mode
   const conf = result.data;
-  // If DATABASE_URL is a generic dummy placeholder, clear it so PGlite is used
-  if (conf.DATABASE_URL === "postgres://user:password@localhost:5432/dbname") {
+  // If DATABASE_URL is a generic dummy placeholder or unconfigured, clear it so PGlite is used
+  if (conf.DATABASE_URL.includes("localhost:5432") || conf.DATABASE_URL.includes("dbname")) {
     conf.DATABASE_URL = "";
   }
   if (conf.YOUCAM_API_KEY && conf.YOUCAM_API_KEY.trim().length > 10) {

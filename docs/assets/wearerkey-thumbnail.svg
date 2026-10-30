@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" style="background:#F5F0E7; font-family:'Inter',system-ui,sans-serif;">
+  <defs>
+    <filter id="card-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#15201D" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- Background decorative border pattern -->
+  <rect x="24" y="24" width="1232" height="672" rx="12" fill="#FAF7F2" stroke="#C8BFAF" stroke-width="2"/>
+  <rect x="36" y="36" width="1208" height="648" rx="8" fill="none" stroke="#C8BFAF" stroke-width="1" stroke-dasharray="8 6"/>
+
+  <!-- Top Badge -->
+  <g transform="translate(100, 100)">
+    <rect x="0" y="0" width="370" height="36" rx="18" fill="#EBF3F0" stroke="#337D68" stroke-width="1.5"/>
+    <text x="185" y="23" text-anchor="middle" font-size="13" font-weight="700" fill="#1F624F" letter-spacing="1">
+      YOUCAM SKIN AI &amp; ECOMMERCE VTO 2026
+    </text>
+  </g>
+
+  <!-- Main Headline & Tagline -->
+  <g transform="translate(100, 200)">
+    <text x="0" y="0" font-family="'Playfair Display', Georgia, serif" font-size="64" font-weight="700" fill="#15201D" letter-spacing="-1">
+      WearerKey
+    </text>
+    <text x="0" y="65" font-family="'Playfair Display', Georgia, serif" font-size="36" font-style="italic" fill="#1F624F">
+      Private Collaborative Virtual Try-On
+    </text>
+    <text x="0" y="125" font-size="22" font-weight="500" fill="#4A5854" width="600">
+      Shop together without sharing the wearer's photo.
+    </text>
+    
+    <!-- Feature Pills -->
+    <g transform="translate(0, 160)">
+      <rect x="0" y="0" width="170" height="34" rx="6" fill="#FFFFFF" stroke="#C8BFAF"/>
+      <text x="85" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#15201D">YouCam Clothes V4</text>
+
+      <rect x="185" y="0" width="190" height="34" rx="6" fill="#FFFFFF" stroke="#C8BFAF"/>
+      <text x="280" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#15201D">Zero-Knowledge Helper</text>
+
+      <rect x="390" y="0" width="170" height="34" rx="6" fill="#FFFFFF" stroke="#C8BFAF"/>
+      <text x="475" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#15201D">Signed Deletion Receipt</text>
+    </g>
+  </g>
+
+  <!-- Right Visual: Two-Role Split Parcel Display -->
+  <g transform="translate(730, 130)" filter="url(#card-shadow)">
+    <!-- Wearer Card (Left Behind) -->
+    <g transform="translate(0, 20)">
+      <rect x="0" y="0" width="220" height="380" rx="8" fill="#FFFFFF" stroke="#337D68" stroke-width="2"/>
+      <rect x="0" y="0" width="220" height="40" rx="8" fill="#1F624F"/>
+      <text x="110" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">WEARER MIRROR</text>
+      
+      <!-- Stylized silhouette mirror inside -->
+      <rect x="20" y="58" width="180" height="230" rx="4" fill="#EBF3F0" stroke="#C8BFAF"/>
+      <!-- Mannequin silhouette -->
+      <circle cx="110" cy="110" r="24" fill="#1F624F"/>
+      <path d="M 85 145 L 135 145 L 145 230 L 75 230 Z" fill="#1F624F"/>
+      <rect x="90" y="230" width="16" height="45" fill="#1F624F"/>
+      <rect x="114" y="230" width="16" height="45" fill="#1F624F"/>
+
+      <rect x="20" y="300" width="180" height="30" rx="4" fill="#216B4B"/>
+      <text x="110" y="320" text-anchor="middle" font-size="11" font-weight="700" fill="#FFFFFF">VERDICT: APPROVED ✓</text>
+      <text x="110" y="355" text-anchor="middle" font-size="10" font-weight="600" fill="#1F624F">🔒 Full Result Visible</text>
+    </g>
+
+    <!-- Helper Card (Right Overlapping) -->
+    <g transform="translate(190, 60)">
+      <rect x="0" y="0" width="220" height="380" rx="8" fill="#FFFFFF" stroke="#8E5F7A" stroke-width="2"/>
+      <rect x="0" y="0" width="220" height="40" rx="8" fill="#70465E"/>
+      <text x="110" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF">HELPER WORKSPACE</text>
+
+      <!-- Garment card inside -->
+      <rect x="20" y="58" width="180" height="230" rx="4" fill="#F4EEF2" stroke="#C8BFAF"/>
+      <!-- Garment coat icon -->
+      <path d="M 65 95 L 155 95 L 180 145 L 155 160 L 140 130 L 145 240 L 75 240 L 80 130 L 65 160 L 40 145 Z" fill="#70465E"/>
+
+      <rect x="20" y="300" width="180" height="30" rx="4" fill="#FAF7F2" stroke="#8E5F7A"/>
+      <text x="110" y="320" text-anchor="middle" font-size="10.5" font-weight="700" fill="#70465E">FEEDBACK RECEIVED ✓</text>
+      <text x="110" y="355" text-anchor="middle" font-size="10" font-weight="700" fill="#B64A35">🚫 ZERO Wearer Photo Access</text>
+    </g>
+  </g>
+
+  <!-- Bottom Disclaimers -->
+  <g transform="translate(100, 640)">
+    <text x="0" y="0" font-size="11" fill="#788782">
+      <tspan font-weight="700" fill="#15201D">VISUAL APPEARANCE PREVIEW ONLY</tspan> — Virtual try-on simulation by YouCam AI Clothes V4. Not an exact size, fit, or material guarantee.
+    </text>
+  </g>
+</svg>
