@@ -169,10 +169,29 @@ function checkClaims() {
     fs.mkdirSync(docsDir, { recursive: true });
   }
 
-  fs.writeFileSync(
-    path.join(docsDir, "verification-results.json"),
-    JSON.stringify(results, null, 2)
-  );
+  const verificationPath = path.join(docsDir, "verification-results.json");
+  if (fs.existsSync(verificationPath)) {
+    try {
+      const existing = JSON.parse(fs.readFileSync(verificationPath, "utf-8"));
+      if (
+        existing.status === results.status &&
+        existing.verdict === results.verdict &&
+        JSON.stringify(existing.tests) === JSON.stringify(results.tests) &&
+        existing.provider?.mode === results.provider.mode &&
+        existing.provider?.live_execution_verified === results.provider.live_execution_verified
+      ) {
+        console.log(`  Verification ledger up-to-date in docs/verification-results.json`);
+        if (errors > 0) {
+          console.error(`❌ Claims check FAILED with ${errors} issues.`);
+          process.exit(1);
+        }
+        console.log(`✅ Claims check PASSED: All claims truthful, transparent, and verified.`);
+        return;
+      }
+    } catch {}
+  }
+
+  fs.writeFileSync(verificationPath, JSON.stringify(results, null, 2));
   console.log(`  Verification ledger written to docs/verification-results.json`);
 
   if (errors > 0) {
