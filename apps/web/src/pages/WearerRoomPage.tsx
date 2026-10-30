@@ -32,11 +32,24 @@ export const WearerRoomPage: React.FC = () => {
   const [showSourcePhoto, setShowSourcePhoto] = useState(false);
 
   const [token] = useState<string>(() => {
-    if (routeToken) {
+    let raw = routeToken;
+    if (!raw && typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash.startsWith('#token=')) {
+        raw = hash.substring(7);
+      } else if (hash.startsWith('#') && hash.length > 10) {
+        raw = hash.substring(1);
+      }
+      if (!raw) {
+        const params = new URLSearchParams(window.location.search);
+        raw = params.get('token') || undefined;
+      }
+    }
+    if (raw) {
       try {
-        sessionStorage.setItem('wearerkey_wearer_token', routeToken);
+        sessionStorage.setItem('wearerkey_wearer_token', raw);
       } catch {}
-      return routeToken;
+      return raw;
     }
     try {
       return sessionStorage.getItem('wearerkey_wearer_token') || '';
@@ -46,10 +59,13 @@ export const WearerRoomPage: React.FC = () => {
   });
 
   useEffect(() => {
-    if (routeToken && window.history.replaceState) {
-      window.history.replaceState(null, '', '/wearer');
+    if (token) {
+      api.bootstrap(token, 'wearer').catch(() => {});
+      if (window.history.replaceState) {
+        window.history.replaceState(null, '', '/wearer');
+      }
     }
-  }, [routeToken]);
+  }, [token]);
 
   // Handle ESC key for modal
   useEffect(() => {

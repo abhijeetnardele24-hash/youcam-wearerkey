@@ -1,16 +1,32 @@
 import { z } from "zod";
 
-// --- Enumerations ---
+// --- Enums & Primitives ---
 
 export const GarmentCategorySchema = z.enum([
   "upper_body",
   "lower_body",
   "full_body",
+  "outer",
   "shoes",
-  "auto",
-  "outer"
+  "auto"
 ]);
 export type GarmentCategory = z.infer<typeof GarmentCategorySchema>;
+
+export const ProposalStatusSchema = z.enum([
+  "CREATED",
+  "READY",
+  "UPLOADING",
+  "SUBMITTED",
+  "PROCESSING",
+  "SUCCEEDED",
+  "FAILED",
+  "REJECTED_CONSENT",
+  "REVIEWED"
+]);
+export type ProposalStatus = z.infer<typeof ProposalStatusSchema>;
+
+export const DecisionSchema = z.enum(["APPROVE", "MAYBE", "PASS"]);
+export type Decision = z.infer<typeof DecisionSchema>;
 
 export const SessionStatusSchema = z.enum([
   "DRAFT",
@@ -23,21 +39,14 @@ export const SessionStatusSchema = z.enum([
 ]);
 export type SessionStatus = z.infer<typeof SessionStatusSchema>;
 
-export const ProposalStatusSchema = z.enum([
-  "CREATED",
-  "GATE_BLOCKED",
-  "READY",
-  "UPLOADING",
-  "SUBMITTED",
-  "PROCESSING",
-  "SUCCEEDED",
-  "FAILED",
-  "REVIEWED"
+export const DeletionStatusSchema = z.enum([
+  "NOT_REQUESTED",
+  "REQUESTED",
+  "CONFIRMED",
+  "PARTIAL_FAILURE",
+  "FAILED"
 ]);
-export type ProposalStatus = z.infer<typeof ProposalStatusSchema>;
-
-export const DecisionSchema = z.enum(["APPROVE", "MAYBE", "PASS"]);
-export type Decision = z.infer<typeof DecisionSchema>;
+export type DeletionStatus = z.infer<typeof DeletionStatusSchema>;
 
 export const ProviderModeSchema = z.enum([
   "LIVE_YOUCAM",
@@ -46,7 +55,7 @@ export const ProviderModeSchema = z.enum([
 ]);
 export type ProviderMode = z.infer<typeof ProviderModeSchema>;
 
-// --- Session Creation & Configuration ---
+// --- Session Lifecycle Schemas ---
 
 export const CreateSessionRequestSchema = z.object({
   allowed_categories: z.array(GarmentCategorySchema).min(1, "Select at least one permitted garment category"),
@@ -72,6 +81,23 @@ export const MintHelperLinkResponseSchema = z.object({
   expires_at: z.string().datetime()
 });
 export type MintHelperLinkResponse = z.infer<typeof MintHelperLinkResponseSchema>;
+
+// --- Authentication & Single-Use Bootstrap ---
+
+export const BootstrapRequestSchema = z.object({
+  token: z.string().min(16),
+  role: z.enum(["wearer", "helper"]).optional()
+});
+export type BootstrapRequest = z.infer<typeof BootstrapRequestSchema>;
+
+export const BootstrapResponseSchema = z.object({
+  authenticated: z.boolean(),
+  session_id: z.string().uuid(),
+  role: z.enum(["wearer", "helper"]),
+  status: SessionStatusSchema,
+  expires_at: z.string().datetime()
+});
+export type BootstrapResponse = z.infer<typeof BootstrapResponseSchema>;
 
 // --- Proposal Submissions ---
 
@@ -225,17 +251,49 @@ export type MetaResponse = z.infer<typeof MetaResponseSchema>;
 
 // --- Deletion & Privacy Receipt ---
 
+export const ReceiptHmacSchema = z.object({
+  key_id: z.string(),
+  algorithm: z.literal("HMAC-SHA256"),
+  signature: z.string(),
+  signed_at: z.string().datetime()
+});
+export type ReceiptHmac = z.infer<typeof ReceiptHmacSchema>;
+
 export const DeletionReceiptSchema = z.object({
-  schema_version: z.string(),
+  schema_version: z.string().default("2.0"),
   session_id: z.string().uuid(),
-  revoked_at: z.string().datetime(),
-  purged_at: z.string().datetime().nullable(),
-  status: z.enum(["PURGED", "PURGE_PARTIAL", "PROVIDER_DELETION_FAILED", "LOCAL_ONLY_REVOKED"]),
-  provider_deletion_confirmed: z.boolean(),
-  provider_task_count: z.number().int(),
+  revoked_at: z.string().datetime().nullable(),
+  purged_at: z.string().datetime().nullable(), // Strictly null if any remote deletion unconfirmed
+  overall_deletion_status: DeletionStatusSchema,
+  task_deletion_status: DeletionStatusSchema,
+  source_file_deletion_status: DeletionStatusSchema,
+  garment_file_deletion_status: DeletionStatusSchema,
+  provider_tasks_total: z.number().int(),
   provider_tasks_deleted: z.number().int(),
+  remote_files_total: z.number().int(),
+  remote_files_deleted: z.number().int(),
+  in_memory_buffers_purged: z.boolean(),
   local_access_revoked: z.boolean(),
   evaluated_commit_sha: z.string(),
-  evidence_authority: z.string()
+  evidence_authority: z.string(),
+  deletion_error: z.string().nullable().optional(),
+  receipt_hmac: ReceiptHmacSchema.optional()
 });
 export type DeletionReceipt = z.infer<typeof DeletionReceiptSchema>;
+
+export const ReceiptVerificationRequestSchema = z.object({
+  receipt: z.record(z.any()),
+  signature: z.string(),
+  signed_at: z.string().datetime(),
+  key_id: z.string().optional()
+});
+export type ReceiptVerificationRequest = z.infer<typeof ReceiptVerificationRequestSchema>;
+
+export const ReceiptVerificationResponseSchema = z.object({
+  valid: z.boolean(),
+  key_id: z.string(),
+  algorithm: z.string(),
+  evaluated_commit_sha: z.string().optional(),
+  overall_deletion_status: z.string().optional()
+});
+export type ReceiptVerificationResponse = z.infer<typeof ReceiptVerificationResponseSchema>;

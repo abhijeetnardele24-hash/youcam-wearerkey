@@ -8,6 +8,9 @@ import type {
   HealthCheckResponse,
   MetaResponse,
   DeletionReceipt,
+  BootstrapResponse,
+  ReceiptVerificationRequest,
+  ReceiptVerificationResponse,
 } from '@wearerkey/contracts';
 
 const API_BASE = '/api';
@@ -36,6 +39,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const response = await fetch(url, {
     ...options,
+    credentials: 'include',
     headers,
   });
 
@@ -63,6 +67,27 @@ export const api = {
 
   getMeta(): Promise<MetaResponse> {
     return request<MetaResponse>('/meta');
+  },
+
+  bootstrap(token: string, role?: 'wearer' | 'helper'): Promise<BootstrapResponse> {
+    return request<BootstrapResponse>('/auth/bootstrap', {
+      method: 'POST',
+      body: JSON.stringify({ token, role }),
+    });
+  },
+
+  verifyReceipt(body: ReceiptVerificationRequest): Promise<ReceiptVerificationResponse> {
+    return request<ReceiptVerificationResponse>('/receipts/verify', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  retryPurge(token?: string): Promise<DeletionReceipt> {
+    return request<DeletionReceipt>('/wearer/session/retry-purge', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
   },
 
   createSession(input: CreateSessionRequest): Promise<CreateSessionResponse> {

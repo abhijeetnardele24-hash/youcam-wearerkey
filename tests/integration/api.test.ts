@@ -232,8 +232,10 @@ describe("WearerKey End-to-End API Integration", () => {
     });
     expect(receiptRes.statusCode).toBe(200);
     const receiptData = receiptRes.json();
-    expect(receiptData.schema_version).toBe("1.0");
+    expect(receiptData.schema_version).toBe("2.0");
     expect(receiptData.evidence_authority).toBe("WEARERKEY_AUDITABLE_LEDGER");
+    expect(receiptData.receipt_hmac).toBeDefined();
+    expect(receiptData.receipt_hmac.algorithm).toBe("HMAC-SHA256");
   });
 
   it("Enforces capability authorization on SSE /api/events", async () => {
@@ -248,9 +250,98 @@ describe("WearerKey End-to-End API Integration", () => {
     // 2. Invalid token -> 401
     const badTokenRes = await app.inject({
       method: "GET",
-      url: "/api/events?token=totally_invalid_token_12345"
+      url: "/api/events",
+      headers: {
+        Authorization: "Bearer totally_invalid_token_12345"
+      }
     });
     expect(badTokenRes.statusCode).toBe(401);
     expect(badTokenRes.json().error).toBe("UNAUTHORIZED");
+  });
+
+  it("POST /api/auth/bootstrap exchanges capability token for secure HttpOnly cookie", async () => {
+    // 1. Create a session
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {
+        consent_version: "2026-10-30-v1",
+        allowed_categories: ["upper_body", "outer"],
+        max_proposals: 3,
+        expires_in_hours: 24,
+        gift_mode: false
+      }
+    });
+    expect(createRes.statusCode).toBe(201);
+    const { wearer_token, session_id } = createRes.json();
+
+    // 2. Bootstrap wearer session
+    const bootstrapRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: {
+        token: wearer_token,
+        role: "wearer"
+      }
+    });
+    expect(bootstrapRes.statusCode).toBe(200);
+    const bootData = bootstrapRes.json();
+    expect(bootData.authenticated).toBe(true);
+    expect(bootData.role).toBe("wearer");
+    expect(bootData.session_id).toBe(session_id);
+
+    // Verify Set-Cookie header contains HttpOnly wearerkey_session cookie
+    const setCookie = bootstrapRes.headers["set-cookie"];
+    expect(setCookie).toBeDefined();
+    expect(String(setCookie)).toContain("wearerkey_session=");
+    expect(String(setCookie)).toContain("HttpOnly");
+  });
+
+  it("POST /api/receipts/verify validates authentic signatures and detects tampering", async () => {
+    // 1. Seed a session to get a real signed receipt
+    const seedRes = await app.inject({
+      method: "POST",
+      url: "/api/judge/seed"
+    });
+    const { wearer_token } = seedRes.json();
+
+    const receiptRes = await app.inject({
+      method: "GET",
+      url: "/api/wearer/receipt",
+      headers: { Authorization: `Bearer ${wearer_token}` }
+    });
+    expect(receiptRes.statusCode).toBe(200);
+    const receipt = receiptRes.json();
+    const hmac = receipt.receipt_hmac;
+    expect(hmac).toBeDefined();
+
+    // 2. Verify authentic receipt
+    const verifyValidRes = await app.inject({
+      method: "POST",
+      url: "/api/receipts/verify",
+      payload: {
+        receipt,
+        signature: hmac.signature,
+        signed_at: hmac.signed_at,
+        key_id: hmac.key_id
+      }
+    });
+    expect(verifyValidRes.statusCode).toBe(200);
+    expect(verifyValidRes.json().valid).toBe(true);
+
+    // 3. Verify tampered receipt payload is rejected
+    const tamperedReceipt = { ...receipt, overall_deletion_status: "TAMPERED_STATUS" };
+    const verifyTamperedRes = await app.inject({
+      method: "POST",
+      url: "/api/receipts/verify",
+      payload: {
+        receipt: tamperedReceipt,
+        signature: hmac.signature,
+        signed_at: hmac.signed_at,
+        key_id: hmac.key_id
+      }
+    });
+    expect(verifyTamperedRes.statusCode).toBe(200);
+    expect(verifyTamperedRes.json().valid).toBe(false);
   });
 });

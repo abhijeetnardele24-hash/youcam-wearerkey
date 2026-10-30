@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import sharp from "sharp";
 import { YouCamClothesProvider } from "../apps/api/src/providers/youcam/youcam-provider.js";
 import type { SanitizedImage } from "../apps/api/src/services/image-sanitizer.js";
+import { calculateContentHash } from "../packages/domain/src/crypto.js";
 
 interface SmokeReceipt {
   evaluated_commit_sha: string;
@@ -30,6 +31,8 @@ function getCommitSha(): string {
 }
 
 async function runSmoke() {
+  const args = process.argv.slice(2);
+  const requireLive = args.includes("--require-live") || process.env.REQUIRE_LIVE === "1";
   const apiKey = process.env.YOUCAM_API_KEY;
   const baseUrl = process.env.YOUCAM_BASE_URL || "https://yce-api-01.makeupar.com";
   const commitSha = getCommitSha();
@@ -38,6 +41,7 @@ async function runSmoke() {
   console.log(`[WearerKey Live Smoke] Checking YouCam Clothes V4 connectivity...`);
   console.log(`  Base URL: ${baseUrl}`);
   console.log(`  Commit SHA: ${commitSha}`);
+  console.log(`  Require Live: ${requireLive}`);
 
   const docsDir = path.resolve(process.cwd(), "docs");
   if (!fs.existsSync(docsDir)) {
@@ -46,7 +50,6 @@ async function runSmoke() {
 
   if (!apiKey) {
     console.log(`[WearerKey Live Smoke] YOUCAM_API_KEY is not configured.`);
-    console.log(`  Operating in transparent deterministic fixture mode (DEMO_FIXTURE).`);
 
     const receipt: SmokeReceipt = {
       evaluated_commit_sha: commitSha,
@@ -65,6 +68,11 @@ async function runSmoke() {
       JSON.stringify(receipt, null, 2)
     );
     console.log(`[WearerKey Live Smoke] Truthful non-live receipt recorded in docs/live-youcam-receipt.json`);
+
+    if (requireLive) {
+      console.error(`[WearerKey Live Smoke] FAIL-CLOSED: --require-live was requested but YOUCAM_API_KEY is not set.`);
+      process.exit(1);
+    }
     return;
   }
 
@@ -74,41 +82,56 @@ async function runSmoke() {
   try {
     const provider = new YouCamClothesProvider(baseUrl, apiKey);
 
-    // 1. Generate test reference & garment images
-    const sourceRaw = await sharp({
-      create: {
-        width: 512,
-        height: 768,
-        channels: 3,
-        background: { r: 245, g: 240, b: 231 }
-      }
-    }).png().toBuffer();
+    // 1. Obtain detectable reference person & garment test fixtures
+    let sourceBuffer: Buffer;
+    let garmentBuffer: Buffer;
+
+    const samplePersonPath = path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png");
+    const sampleGarmentPath = path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png");
+
+    if (fs.existsSync(samplePersonPath) && fs.existsSync(sampleGarmentPath)) {
+      sourceBuffer = fs.readFileSync(samplePersonPath);
+      garmentBuffer = fs.readFileSync(sampleGarmentPath);
+    } else {
+      // Create detectable SVG silhouette fallbacks if files missing
+      const personSvg = `
+        <svg width="600" height="800" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100%" height="100%" fill="#F5F0E7"/>
+          <circle cx="300" cy="180" r="70" fill="#D99B77"/>
+          <path d="M 220 280 Q 300 240 380 280 L 420 520 L 180 520 Z" fill="#2D3748"/>
+          <rect x="220" y="520" width="70" height="250" fill="#1A202C"/>
+          <rect x="310" y="520" width="70" height="250" fill="#1A202C"/>
+        </svg>
+      `;
+      const garmentSvg = `
+        <svg width="500" height="500" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100%" height="100%" fill="#FAF7F2"/>
+          <path d="M 150 100 L 220 180 L 280 180 L 350 100 L 400 160 L 340 450 L 160 450 L 100 160 Z" fill="#70465E"/>
+        </svg>
+      `;
+      sourceBuffer = await sharp(Buffer.from(personSvg)).png().toBuffer();
+      garmentBuffer = await sharp(Buffer.from(garmentSvg)).png().toBuffer();
+    }
+
+    const sourceMeta = await sharp(sourceBuffer).metadata();
+    const garmentMeta = await sharp(garmentBuffer).metadata();
 
     const sourceImage: SanitizedImage = {
-      buffer: sourceRaw,
+      buffer: sourceBuffer,
       mimeType: "image/png",
-      width: 512,
-      height: 768,
-      byteSize: sourceRaw.length,
-      contentHash: "smoke_test_source_hash_12345"
+      width: sourceMeta.width || 600,
+      height: sourceMeta.height || 800,
+      byteSize: sourceBuffer.length,
+      contentHash: calculateContentHash(sourceBuffer)
     };
 
-    const garmentRaw = await sharp({
-      create: {
-        width: 512,
-        height: 512,
-        channels: 3,
-        background: { r: 112, g: 70, b: 94 }
-      }
-    }).png().toBuffer();
-
     const garmentImage: SanitizedImage = {
-      buffer: garmentRaw,
+      buffer: garmentBuffer,
       mimeType: "image/png",
-      width: 512,
-      height: 512,
-      byteSize: garmentRaw.length,
-      contentHash: "smoke_test_garment_hash_67890"
+      width: garmentMeta.width || 500,
+      height: garmentMeta.height || 500,
+      byteSize: garmentBuffer.length,
+      contentHash: calculateContentHash(garmentBuffer)
     };
 
     // 2. Upload source via official presigned protocol
@@ -132,15 +155,17 @@ async function runSmoke() {
 
     // 5. Poll for completion
     console.log(`  Polling task status...`);
-    const status = await provider.pollTask(task.taskId, 45000);
+    const status = await provider.pollTask(task.taskId, 60000);
     const latency = Date.now() - startTime;
     console.log(`  Task completed with status: ${status.status} (${latency}ms)`);
 
     // 6. Delete remote task and files
     console.log(`  Purging remote task and files...`);
-    await provider.deleteTask(task.taskId);
-    await provider.deleteFile(sourceFile.fileId);
-    await provider.deleteFile(garmentFile.fileId);
+    const taskDel = await provider.deleteTask(task.taskId);
+    const srcDel = await provider.deleteFile(sourceFile.fileId);
+    const garmDel = await provider.deleteFile(garmentFile.fileId);
+
+    const isPurged = taskDel.confirmed && srcDel && garmDel;
 
     const receipt: SmokeReceipt = {
       evaluated_commit_sha: commitSha,
@@ -153,7 +178,7 @@ async function runSmoke() {
       model_name: "YouCam AI Clothes V4",
       latency_ms: latency,
       task_id: task.taskId,
-      deletion_status: "PURGED",
+      deletion_status: isPurged ? "CONFIRMED" : "PARTIAL_FAILURE",
       reason: status.status === "SUCCEEDED" ? "Live YouCam Clothes V4 verified end-to-end" : status.errorMessage
     };
 
@@ -162,6 +187,11 @@ async function runSmoke() {
       JSON.stringify(receipt, null, 2)
     );
     console.log(`[WearerKey Live Smoke] Live receipt recorded in docs/live-youcam-receipt.json`);
+
+    if (status.status !== "SUCCEEDED" && requireLive) {
+      console.error(`[WearerKey Live Smoke] Task failed on provider side: ${status.errorMessage}`);
+      process.exit(1);
+    }
   } catch (err: any) {
     console.error(`[WearerKey Live Smoke] Live execution failed:`, err.message);
     const receipt: SmokeReceipt = {
@@ -179,6 +209,10 @@ async function runSmoke() {
       path.join(docsDir, "live-youcam-receipt.json"),
       JSON.stringify(receipt, null, 2)
     );
+
+    if (requireLive) {
+      process.exit(1);
+    }
   }
 }
 

@@ -1,0 +1,456 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--reporter=json"
+    ],
+    "configFile": "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\playwright.config.ts",
+    "rootDir": "C:/Users/Abhijeet Nardele/OneDrive/Desktop/devpost project/youcam-wearerkey/tests/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Abhijeet Nardele/OneDrive/Desktop/devpost project/youcam-wearerkey/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "Desktop Chrome",
+        "name": "Desktop Chrome",
+        "testDir": "C:/Users/Abhijeet Nardele/OneDrive/Desktop/devpost project/youcam-wearerkey/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Abhijeet Nardele/OneDrive/Desktop/devpost project/youcam-wearerkey/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "Mobile Viewport (390px)",
+        "name": "Mobile Viewport (390px)",
+        "testDir": "C:/Users/Abhijeet Nardele/OneDrive/Desktop/devpost project/youcam-wearerkey/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "Desktop Chrome",
+        "testDir": "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\tests\\e2e",
+        "snapshotDir": "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\tests\\e2e",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "baseURL": "http://127.0.0.1:4000",
+          "trace": "off",
+          "channel": "chrome",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.4 Safari/537.36",
+          "viewport": {
+            "width": 1280,
+            "height": 720
+          },
+          "screen": {
+            "width": 1920,
+            "height": 1080
+          },
+          "deviceScaleFactor": 1,
+          "isMobile": false,
+          "hasTouch": false,
+          "defaultBrowserType": "chromium"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "Desktop Chrome"
+      },
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "Mobile Viewport (390px)",
+        "testDir": "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\tests\\e2e",
+        "snapshotDir": "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\tests\\e2e",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "baseURL": "http://127.0.0.1:4000",
+          "trace": "off",
+          "channel": "chrome",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          }
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "Mobile Viewport (390px)"
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.64.1",
+    "workers": 1,
+    "webServer": {
+      "command": "npx tsx apps/api/src/server.ts",
+      "url": "http://127.0.0.1:4000/api/health",
+      "reuseExistingServer": true,
+      "timeout": 30000,
+      "env": {
+        "PORT": "4000",
+        "HOST": "127.0.0.1",
+        "NODE_ENV": "development",
+        "YOUCAM_PROVIDER_MODE": "DEMO_FIXTURE",
+        "ENCRYPTION_KEY_HEX": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "DATABASE_DRIVER": "pglite"
+      }
+    }
+  },
+  "suites": [
+    {
+      "title": "e2e-journey.spec.ts",
+      "file": "e2e-journey.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "WearerKey End-to-End User Journeys & Accessibility",
+          "file": "e2e-journey.spec.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Home Page renders with correct branding, boundary diagram, and passes Axe accessibility check",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Desktop Chrome",
+                  "projectName": "Desktop Chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1103,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-30T19:17:56.335Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-0fa1e094e053f76e35de",
+              "file": "e2e-journey.spec.ts",
+              "line": 5,
+              "column": 7
+            },
+            {
+              "title": "30-Second Judge Tour launches cleanly and renders both Wearer and Helper perspectives",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Desktop Chrome",
+                  "projectName": "Desktop Chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2665,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-30T19:17:57.623Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-2c68ec76fc081342a428",
+              "file": "e2e-journey.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "Create Pass Page renders form controls and permitted categories",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Desktop Chrome",
+                  "projectName": "Desktop Chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5652,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-30T19:18:00.298Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-bc139b3845b2f2393c5b",
+              "file": "e2e-journey.spec.ts",
+              "line": 77,
+              "column": 7
+            },
+            {
+              "title": "Modal dialog dismisses cleanly on Escape key in Wearer Room",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Desktop Chrome",
+                  "projectName": "Desktop Chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2298,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-30T19:18:05.960Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-4e9523d97728001d7f70",
+              "file": "e2e-journey.spec.ts",
+              "line": 99,
+              "column": 7
+            },
+            {
+              "title": "Home Page renders with correct branding, boundary diagram, and passes Axe accessibility check",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Viewport (390px)",
+                  "projectName": "Mobile Viewport (390px)",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1141,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-30T19:18:08.843Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-56c8841acaf8ff4910f3",
+              "file": "e2e-journey.spec.ts",
+              "line": 5,
+              "column": 7
+            },
+            {
+              "title": "30-Second Judge Tour launches cleanly and renders both Wearer and Helper perspectives",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Viewport (390px)",
+                  "projectName": "Mobile Viewport (390px)",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7007,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-30T19:18:10.210Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-d5b3a9cfa6bb84168a54",
+              "file": "e2e-journey.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "Create Pass Page renders form controls and permitted categories",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Viewport (390px)",
+                  "projectName": "Mobile Viewport (390px)",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 905,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-30T19:18:17.228Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-849115adda2852f892a1",
+              "file": "e2e-journey.spec.ts",
+              "line": 77,
+              "column": 7
+            },
+            {
+              "title": "Modal dialog dismisses cleanly on Escape key in Wearer Room",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Viewport (390px)",
+                  "projectName": "Mobile Viewport (390px)",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 783,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-30T19:18:18.143Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-d21023618a9376ce477b",
+              "file": "e2e-journey.spec.ts",
+              "line": 99,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-30T19:17:52.999Z",
+    "duration": 26291.289999999997,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

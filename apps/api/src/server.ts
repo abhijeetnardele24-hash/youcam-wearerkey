@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
+import fastifyCookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import path from "node:path";
@@ -7,6 +8,8 @@ import fs from "node:fs";
 import url, { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { healthRoutes } from "./routes/health.js";
+import { authRoutes } from "./routes/auth.js";
+import { receiptRoutes } from "./routes/receipts.js";
 import { sessionRoutes } from "./routes/sessions.js";
 import { wearerRoutes } from "./routes/wearer.js";
 import { helperRoutes } from "./routes/helper.js";
@@ -19,7 +22,14 @@ const __dirname = path.dirname(__filename);
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
-      level: config.NODE_ENV === "test" ? "silent" : "info"
+      level: config.NODE_ENV === "test" ? "silent" : "info",
+      redact: [
+        "req.headers.authorization",
+        "req.headers.cookie",
+        'res.headers["set-cookie"]',
+        "req.headers['x-capability-token']",
+        "req.query.token"
+      ]
     }
   });
 
@@ -33,6 +43,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.header("X-Frame-Options", "SAMEORIGIN");
     reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
     reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  });
+
+  // Cookie Support for capability token bootstrap
+  await app.register(fastifyCookie, {
+    secret: config.ENCRYPTION_KEY_HEX,
+    parseOptions: {}
   });
 
   // CORS: Explicit allowlist
@@ -70,6 +86,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // Register API Routes
   await app.register(healthRoutes);
+  await app.register(authRoutes);
+  await app.register(receiptRoutes);
   await app.register(sessionRoutes);
   await app.register(wearerRoutes);
   await app.register(helperRoutes);

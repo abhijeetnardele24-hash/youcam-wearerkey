@@ -1,0 +1,33 @@
+{
+  "deployment_status": "LOCAL_VERIFIED_PENDING_EXTERNAL_CLOUD_HOSTING",
+  "evaluated_commit_sha": "d7811832234bd1fbd268eae3b34a9c73f4a7817f",
+  "timestamp": "2026-10-30T19:15:00.000Z",
+  "port_configuration": {
+    "local_development": {
+      "web_frontend_url": "http://localhost:3000",
+      "api_backend_url": "http://localhost:4000",
+      "description": "Vite dev server running on port 3000 proxying /api requests to Fastify backend on port 4000"
+    },
+    "production_unified_server": {
+      "url": "http://localhost:3000",
+      "port": 3000,
+      "description": "Fastify unified server serving compiled React SPA and REST API endpoints simultaneously from single port"
+    }
+  },
+  "verified_routes": [
+    "GET /",
+    "GET /create",
+    "GET /judge",
+    "GET /wearer/:token",
+    "GET /helper/:token",
+    "GET /api/health",
+    "GET /api/meta",
+    "POST /api/sessions",
+    "POST /api/auth/bootstrap",
+    "POST /api/receipts/verify",
+    "GET /api/events"
+  ],
+  "docker_container_ready": true,
+  "external_cloud_deployment_required": true,
+  "notes": "To produce a live public HTTPS deployment URL, deploy the Dockerfile or repository to a public hosting provider (Render, Railway, Fly.io, or Vercel) and record the resulting URL."
+}

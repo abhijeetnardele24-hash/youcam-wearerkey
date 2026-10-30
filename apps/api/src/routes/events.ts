@@ -7,20 +7,19 @@ import { eventBus, type SessionEvent } from "../services/event-bus.js";
 
 export const eventRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/api/events", async (req, reply) => {
-    // 1. Extract capability token from Authorization header or query param
+    // 1. Extract capability token strictly from Authorization header or HttpOnly session cookie
     let token: string | undefined;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       token = authHeader.substring(7).trim();
-    }
-    if (!token && req.query && typeof (req.query as any).token === "string") {
-      token = (req.query as any).token.trim();
+    } else if (req.cookies && req.cookies.wearerkey_session) {
+      token = req.cookies.wearerkey_session.trim();
     }
 
     if (!token) {
       return reply.status(401).send({
         error: "UNAUTHORIZED",
-        message: "Capability token required for event streaming"
+        message: "Capability token or authenticated session cookie required for event streaming"
       });
     }
 

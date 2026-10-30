@@ -17,22 +17,24 @@ declare module "fastify" {
 }
 
 function extractToken(req: FastifyRequest): string | null {
+  // 1. Authorization header: Bearer <token>
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
     return authHeader.substring(7).trim();
   }
 
+  // 2. Custom capability header: X-Capability-Token
   const capabilityHeader = req.headers["x-capability-token"];
   if (typeof capabilityHeader === "string" && capabilityHeader.trim().length > 0) {
     return capabilityHeader.trim();
   }
 
-  // Also support query param on initial deep link landing
-  const query = req.query as Record<string, string | undefined>;
-  if (query && query.token) {
-    return query.token.trim();
+  // 3. HttpOnly session cookie set via /api/auth/bootstrap
+  if (req.cookies && req.cookies.wearerkey_session) {
+    return req.cookies.wearerkey_session.trim();
   }
 
+  // SECURITY REQUIREMENT: Query parameter tokens are strictly rejected to prevent referrer/log leakage
   return null;
 }
 
@@ -42,7 +44,7 @@ export function requireRole(expectedRole: "wearer" | "helper") {
     if (!rawToken) {
       return reply.status(401).send({
         error: "UNAUTHORIZED",
-        message: `Missing capability token for ${expectedRole} access.`
+        message: `Missing capability token or session cookie for ${expectedRole} access.`
       });
     }
 

@@ -25,11 +25,24 @@ export const HelperRoomPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [token] = useState<string>(() => {
-    if (routeToken) {
+    let raw = routeToken;
+    if (!raw && typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash.startsWith('#token=')) {
+        raw = hash.substring(7);
+      } else if (hash.startsWith('#') && hash.length > 10) {
+        raw = hash.substring(1);
+      }
+      if (!raw) {
+        const params = new URLSearchParams(window.location.search);
+        raw = params.get('token') || undefined;
+      }
+    }
+    if (raw) {
       try {
-        sessionStorage.setItem('wearerkey_helper_token', routeToken);
+        sessionStorage.setItem('wearerkey_helper_token', raw);
       } catch {}
-      return routeToken;
+      return raw;
     }
     try {
       return sessionStorage.getItem('wearerkey_helper_token') || '';
@@ -39,10 +52,13 @@ export const HelperRoomPage: React.FC = () => {
   });
 
   useEffect(() => {
-    if (routeToken && window.history.replaceState) {
-      window.history.replaceState(null, '', '/helper');
+    if (token) {
+      api.bootstrap(token, 'helper').catch(() => {});
+      if (window.history.replaceState) {
+        window.history.replaceState(null, '', '/helper');
+      }
     }
-  }, [routeToken]);
+  }, [token]);
 
   // Form states
   const [label, setLabel] = useState('');
@@ -505,7 +521,7 @@ export const HelperRoomPage: React.FC = () => {
 
                   {/* Status / Decision Feedback Slip */}
                   <div className="pt-3 border-t border-stone-light">
-                    {proposal.status === 'READY' ? (
+                    {proposal.status === 'CREATED' ? (
                       <button
                         type="button"
                         onClick={() => generateTryOnMutation.mutate(proposal.id)}

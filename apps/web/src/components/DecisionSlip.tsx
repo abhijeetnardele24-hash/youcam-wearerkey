@@ -75,7 +75,7 @@ export const DecisionSlip: React.FC<DecisionSlipProps> = ({
               </div>
               <span>Approve</span>
               <span className={`text-[10px] font-normal ${
-                selectedDecision === 'APPROVE' ? 'text-white/80' : 'text-ink-subtle'
+                selectedDecision === 'APPROVE' ? 'text-white font-medium' : 'text-ink-subtle'
               }`}>
                 Looks great
               </span>
@@ -98,7 +98,7 @@ export const DecisionSlip: React.FC<DecisionSlipProps> = ({
               </div>
               <span>Maybe</span>
               <span className={`text-[10px] font-normal ${
-                selectedDecision === 'MAYBE' ? 'text-white/80' : 'text-ink-subtle'
+                selectedDecision === 'MAYBE' ? 'text-white font-medium' : 'text-ink-subtle'
               }`}>
                 Let's compare
               </span>
@@ -121,7 +121,7 @@ export const DecisionSlip: React.FC<DecisionSlipProps> = ({
               </div>
               <span>Pass</span>
               <span className={`text-[10px] font-normal ${
-                selectedDecision === 'PASS' ? 'text-white/80' : 'text-ink-subtle'
+                selectedDecision === 'PASS' ? 'text-white font-medium' : 'text-ink-subtle'
               }`}>
                 Not for me
               </span>

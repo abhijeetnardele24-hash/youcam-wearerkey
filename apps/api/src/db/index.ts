@@ -45,6 +45,9 @@ async function initSchema(pglite: PGlite) {
       gift_mode BOOLEAN NOT NULL DEFAULT FALSE,
       source_file_id_ciphertext TEXT,
       source_content_hash VARCHAR(64),
+      deletion_status VARCHAR(32) NOT NULL DEFAULT 'NOT_REQUESTED',
+      source_deletion_status VARCHAR(32) NOT NULL DEFAULT 'NOT_REQUESTED',
+      deletion_error TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       revoked_at TIMESTAMPTZ,
@@ -64,6 +67,7 @@ async function initSchema(pglite: PGlite) {
       garment_content_hash VARCHAR(64),
       idempotency_fingerprint VARCHAR(64) UNIQUE,
       status VARCHAR(32) NOT NULL DEFAULT 'CREATED',
+      garment_deletion_status VARCHAR(32) NOT NULL DEFAULT 'NOT_REQUESTED',
       failure_code VARCHAR(64),
       failure_message_safe TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -82,6 +86,9 @@ async function initSchema(pglite: PGlite) {
       observed_units INTEGER,
       provider_status VARCHAR(32),
       provider_error_code VARCHAR(64),
+      task_deletion_status VARCHAR(32) NOT NULL DEFAULT 'NOT_REQUESTED',
+      deletion_requested_at TIMESTAMPTZ,
+      deletion_confirmed_at TIMESTAMPTZ,
       receipt_sha256 VARCHAR(64),
       evaluated_commit_sha VARCHAR(40),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -106,4 +113,12 @@ async function initSchema(pglite: PGlite) {
   `;
 
   await pglite.exec(ddl);
+}
+
+export async function closeDb(): Promise<void> {
+  if (pgliteInstance) {
+    await pgliteInstance.close();
+    pgliteInstance = null;
+    dbInstance = null;
+  }
 }

@@ -4,9 +4,10 @@ import {
   generateCapabilityToken,
   hashCapabilityToken,
   encryptProviderIdentifier,
-  decryptProviderIdentifier
+  decryptProviderIdentifier,
+  signReceiptPayload
 } from "@wearerkey/domain";
-import { CreateSessionRequestSchema } from "@wearerkey/contracts";
+import { CreateSessionRequestSchema, type DeletionStatus } from "@wearerkey/contracts";
 import { config } from "../config.js";
 import { getDb } from "../db/index.js";
 import { relaySessions, providerTasks, proposals, auditEvents } from "../db/schema.js";
@@ -183,6 +184,216 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // Helper execution function for purge & revocation logic
+  async function executePurge(sessionId: string, onlyRetryFailed = false) {
+    const db = await getDb();
+    const provider = getProvider();
+
+    const sessionRows = await db
+      .select()
+      .from(relaySessions)
+      .where(eq(relaySessions.id, sessionId))
+      .limit(1);
+
+    const session = sessionRows[0];
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+
+    const sessionProposals = await db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.sessionId, sessionId));
+
+    const proposalIds = sessionProposals.map((p) => p.id);
+
+    let totalTasks = 0;
+    let deletedTasks = 0;
+    let failedTasks = 0;
+
+    let totalFiles = 0;
+    let deletedFiles = 0;
+    let failedFiles = 0;
+    const errors: string[] = [];
+
+    // 1. Delete remote provider tasks
+    for (const prop of sessionProposals) {
+      const tasks = await db
+        .select()
+        .from(providerTasks)
+        .where(eq(providerTasks.proposalId, prop.id));
+
+      for (const t of tasks) {
+        if (!t.taskIdCiphertext) continue;
+        totalTasks++;
+
+        if (onlyRetryFailed && t.taskDeletionStatus === "CONFIRMED") {
+          deletedTasks++;
+          continue;
+        }
+
+        const now = new Date();
+        await db
+          .update(providerTasks)
+          .set({ taskDeletionStatus: "REQUESTED", deletionRequestedAt: now })
+          .where(eq(providerTasks.id, t.id));
+
+        try {
+          const remoteTaskId = decryptProviderIdentifier(t.taskIdCiphertext, config.ENCRYPTION_KEY_HEX);
+          const res = await provider.deleteTask(remoteTaskId);
+          if (res.confirmed) {
+            deletedTasks++;
+            await db
+              .update(providerTasks)
+              .set({ taskDeletionStatus: "CONFIRMED", deletionConfirmedAt: new Date() })
+              .where(eq(providerTasks.id, t.id));
+          } else {
+            failedTasks++;
+            await db
+              .update(providerTasks)
+              .set({ taskDeletionStatus: "FAILED" })
+              .where(eq(providerTasks.id, t.id));
+            errors.push(`Task ${t.id} deletion unconfirmed by provider`);
+          }
+        } catch (err: any) {
+          failedTasks++;
+          await db
+            .update(providerTasks)
+            .set({ taskDeletionStatus: "FAILED" })
+            .where(eq(providerTasks.id, t.id));
+          errors.push(`Task ${t.id} deletion error: ${err.message}`);
+        }
+      }
+
+      // 2. Delete remote garment file
+      if (prop.garmentFileIdCiphertext) {
+        totalFiles++;
+        if (onlyRetryFailed && prop.garmentDeletionStatus === "CONFIRMED") {
+          deletedFiles++;
+        } else {
+          try {
+            const remoteGarmentId = decryptProviderIdentifier(prop.garmentFileIdCiphertext, config.ENCRYPTION_KEY_HEX);
+            const ok = await provider.deleteFile(remoteGarmentId);
+            if (ok) {
+              deletedFiles++;
+              await db
+                .update(proposals)
+                .set({ garmentDeletionStatus: "CONFIRMED" })
+                .where(eq(proposals.id, prop.id));
+            } else {
+              failedFiles++;
+              await db
+                .update(proposals)
+                .set({ garmentDeletionStatus: "FAILED" })
+                .where(eq(proposals.id, prop.id));
+              errors.push(`Garment file for proposal ${prop.id} deletion failed`);
+            }
+          } catch (err: any) {
+            failedFiles++;
+            await db
+              .update(proposals)
+              .set({ garmentDeletionStatus: "FAILED" })
+              .where(eq(proposals.id, prop.id));
+            errors.push(`Garment file error: ${err.message}`);
+          }
+        }
+      }
+    }
+
+    // 3. Delete remote source file
+    if (session.sourceFileIdCiphertext) {
+      totalFiles++;
+      if (onlyRetryFailed && session.sourceDeletionStatus === "CONFIRMED") {
+        deletedFiles++;
+      } else {
+        try {
+          const remoteSourceId = decryptProviderIdentifier(session.sourceFileIdCiphertext, config.ENCRYPTION_KEY_HEX);
+          const ok = await provider.deleteFile(remoteSourceId);
+          if (ok) {
+            deletedFiles++;
+            await db
+              .update(relaySessions)
+              .set({ sourceDeletionStatus: "CONFIRMED" })
+              .where(eq(relaySessions.id, sessionId));
+          } else {
+            failedFiles++;
+            await db
+              .update(relaySessions)
+              .set({ sourceDeletionStatus: "FAILED" })
+              .where(eq(relaySessions.id, sessionId));
+            errors.push("Source file deletion failed");
+          }
+        } catch (err: any) {
+          failedFiles++;
+          await db
+            .update(relaySessions)
+            .set({ sourceDeletionStatus: "FAILED" })
+            .where(eq(relaySessions.id, sessionId));
+          errors.push(`Source file deletion error: ${err.message}`);
+        }
+      }
+    }
+
+    // 4. Purge all ephemeral in-memory preview buffers
+    ephemeralImageStore.purgeSession(sessionId, proposalIds);
+
+    const hasFailures = failedTasks > 0 || failedFiles > 0;
+    const overallStatus: DeletionStatus = hasFailures ? "PARTIAL_FAILURE" : "CONFIRMED";
+    const taskStatus: DeletionStatus =
+      totalTasks === 0 ? "NOT_REQUESTED" : failedTasks > 0 ? (deletedTasks > 0 ? "PARTIAL_FAILURE" : "FAILED") : "CONFIRMED";
+    const garmentStatus: DeletionStatus = sessionProposals.some((p) => p.garmentFileIdCiphertext)
+      ? failedFiles > 0 ? "PARTIAL_FAILURE" : "CONFIRMED"
+      : "NOT_REQUESTED";
+    const sourceStatus: DeletionStatus = session.sourceFileIdCiphertext
+      ? errors.some((e) => e.includes("Source")) ? "FAILED" : "CONFIRMED"
+      : "NOT_REQUESTED";
+
+    const now = new Date();
+    // CRITICAL SECURITY INVARIANT: purgedAt MUST remain null if any deletion is unconfirmed or failed
+    const purgedAt = hasFailures ? null : now;
+    const deletionError = errors.length > 0 ? errors.join("; ") : null;
+    const revokedAt = session.revokedAt || now;
+
+    await db
+      .update(relaySessions)
+      .set({
+        status: "REVOKED",
+        revokedAt,
+        purgedAt,
+        deletionStatus: overallStatus,
+        sourceDeletionStatus: sourceStatus,
+        deletionError,
+        updatedAt: now
+      })
+      .where(eq(relaySessions.id, sessionId));
+
+    const receiptPayload: any = {
+      schema_version: "2.0",
+      session_id: sessionId,
+      status: "REVOKED",
+      revoked_at: revokedAt.toISOString(),
+      purged_at: purgedAt ? purgedAt.toISOString() : null,
+      overall_deletion_status: overallStatus,
+      task_deletion_status: taskStatus,
+      source_file_deletion_status: sourceStatus,
+      garment_file_deletion_status: garmentStatus,
+      provider_tasks_total: totalTasks,
+      provider_tasks_deleted: deletedTasks,
+      remote_files_total: totalFiles,
+      remote_files_deleted: deletedFiles,
+      in_memory_buffers_purged: true,
+      local_access_revoked: true,
+      evaluated_commit_sha: process.env.GIT_COMMIT_SHA || "unknown",
+      evidence_authority: "WEARERKEY_AUDITABLE_LEDGER",
+      deletion_error: deletionError
+    };
+
+    const signatureInfo = signReceiptPayload(receiptPayload, config.ENCRYPTION_KEY_HEX);
+    receiptPayload.receipt_hmac = signatureInfo;
+
+    return receiptPayload;
+  }
+
   // 4. Revoke Try-On Pass (Wearer Only)
   fastify.delete(
     "/api/wearer/session",
@@ -190,81 +401,18 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     async (req, reply) => {
       const auth = req.authSession!;
       const db = await getDb();
-      const provider = getProvider();
 
-      // Find all tasks for this session
-      const sessionProposals = await db
-        .select()
-        .from(proposals)
-        .where(eq(proposals.sessionId, auth.sessionId));
-
-      let deletedCount = 0;
-      let totalTasks = 0;
-      const proposalIds = sessionProposals.map((p) => p.id);
-
-      for (const prop of sessionProposals) {
-        const tasks = await db
-          .select()
-          .from(providerTasks)
-          .where(eq(providerTasks.proposalId, prop.id));
-
-        totalTasks += tasks.length;
-        for (const t of tasks) {
-          if (t.taskIdCiphertext) {
-            try {
-              const remoteTaskId = decryptProviderIdentifier(t.taskIdCiphertext, config.ENCRYPTION_KEY_HEX);
-              const res = await provider.deleteTask(remoteTaskId);
-              if (res.confirmed) {
-                deletedCount++;
-              }
-            } catch (err) {
-              req.log.warn({ err, taskId: t.id }, "Provider deletion request encountered error");
-            }
-          }
-        }
-
-        // Delete remote garment file if stored
-        if (prop.garmentFileIdCiphertext) {
-          try {
-            const remoteGarmentId = decryptProviderIdentifier(prop.garmentFileIdCiphertext, config.ENCRYPTION_KEY_HEX);
-            await provider.deleteFile(remoteGarmentId);
-          } catch (err) {
-            req.log.warn({ err, proposalId: prop.id }, "Provider garment file deletion error");
-          }
-        }
-      }
-
-      // Delete remote source file if stored
-      if (auth.session.sourceFileIdCiphertext) {
-        try {
-          const remoteSourceId = decryptProviderIdentifier(auth.session.sourceFileIdCiphertext, config.ENCRYPTION_KEY_HEX);
-          await provider.deleteFile(remoteSourceId);
-        } catch (err) {
-          req.log.warn({ err, sessionId: auth.sessionId }, "Provider source file deletion error");
-        }
-      }
-
-      // Purge all ephemeral in-memory preview buffers
-      ephemeralImageStore.purgeSession(auth.sessionId, proposalIds);
-
-      const revokedAt = new Date();
-      await db
-        .update(relaySessions)
-        .set({
-          status: "REVOKED",
-          revokedAt,
-          purgedAt: revokedAt,
-          updatedAt: revokedAt
-        })
-        .where(eq(relaySessions.id, auth.sessionId));
+      const receipt = await executePurge(auth.sessionId, false);
 
       await db.insert(auditEvents).values({
         sessionId: auth.sessionId,
         actorRole: "wearer",
         eventType: "SESSION_REVOKED",
         details: {
-          tasks_total: totalTasks,
-          tasks_deleted: deletedCount
+          overall_deletion_status: receipt.overall_deletion_status,
+          purged_at: receipt.purged_at,
+          tasks_deleted: receipt.provider_tasks_deleted,
+          files_deleted: receipt.remote_files_deleted
         }
       });
 
@@ -272,16 +420,37 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
         sessionId: auth.sessionId,
         type: "SESSION_REVOKED",
         targetRole: "all",
-        payload: { revoked_at: revokedAt.toISOString() }
+        payload: {
+          revoked_at: receipt.revoked_at,
+          overall_deletion_status: receipt.overall_deletion_status
+        }
       });
 
-      return reply.send({
-        status: "REVOKED",
-        revoked_at: revokedAt.toISOString(),
-        purged_at: revokedAt.toISOString(),
-        tasks_purged: deletedCount,
-        tasks_total: totalTasks
+      return reply.send(receipt);
+    }
+  );
+
+  // 5. Retry Purge on Partial Deletion Failure (Wearer Only)
+  fastify.post(
+    "/api/wearer/session/retry-purge",
+    { preHandler: [requireRole("wearer")] },
+    async (req, reply) => {
+      const auth = req.authSession!;
+      const db = await getDb();
+
+      const receipt = await executePurge(auth.sessionId, true);
+
+      await db.insert(auditEvents).values({
+        sessionId: auth.sessionId,
+        actorRole: "wearer",
+        eventType: "SESSION_PURGE_RETRIED",
+        details: {
+          overall_deletion_status: receipt.overall_deletion_status,
+          purged_at: receipt.purged_at
+        }
       });
+
+      return reply.send(receipt);
     }
   );
 };

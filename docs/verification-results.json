@@ -1,22 +1,23 @@
 {
-  "evaluated_commit_sha": "c1954512de9659546925685350a869f183b0acf9",
-  "timestamp": "2026-10-30T18:13:04.054Z",
+  "evaluated_commit_sha": "d7811832234bd1fbd268eae3b34a9c73f4a7817f",
+  "timestamp": "2026-10-30T19:18:21.156Z",
   "status": "PASSED",
   "claims_verified": true,
+  "verdict": "INTERNAL_COMPLETE_EXTERNAL_ACTION_REQUIRED",
   "tests": {
     "vitest_unit_and_integration": {
-      "total": 36,
-      "passed": 36,
+      "total": 38,
+      "passed": 38,
       "failed": 0,
       "suites": [
         "domain.test.ts",
-        "api.test.ts",
-        "youcam-provider.test.ts"
+        "youcam-provider.test.ts",
+        "api.test.ts"
       ]
     },
     "playwright_e2e_and_axe": {
-      "total": 6,
-      "passed": 6,
+      "total": 8,
+      "passed": 8,
       "failed": 0,
       "viewports": [
         "Desktop Chrome",

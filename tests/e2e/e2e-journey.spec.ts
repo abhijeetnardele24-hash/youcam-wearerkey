@@ -24,7 +24,6 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     // Run Axe Accessibility Scan
     const axeResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa'])
-      .disableRules(['color-contrast']) // Ignore subtle parchment theme contrast variations
       .analyze();
 
     expect(axeResults.violations).toEqual([]);
@@ -70,7 +69,6 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     // Run Axe Accessibility Scan on Judge Tour Page
     const axeResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa'])
-      .disableRules(['color-contrast', 'frame-title']) // Ignore iframe titles in split view
       .analyze();
 
     expect(axeResults.violations).toEqual([]);
@@ -93,9 +91,33 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     // Run Axe Scan
     const axeResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa'])
-      .disableRules(['color-contrast'])
       .analyze();
 
     expect(axeResults.violations).toEqual([]);
+  });
+
+  test('Modal dialog dismisses cleanly on Escape key in Wearer Room', async ({ page }) => {
+    // 1. Launch Judge Tour to get active seeded session
+    await page.goto('/judge');
+    const launchBtn = page.getByRole('button', { name: /Launch Interactive Split-Screen/i });
+    await launchBtn.click();
+    await expect(page.getByText(/Active Seed:/i)).toBeVisible({ timeout: 15000 });
+
+    // 2. Switch to Wearer View tab
+    const wearerTab = page.getByRole('tab', { name: 'Wearer View' });
+    await wearerTab.click();
+
+    // 3. Find Wearer Room iframe
+    const wearerFrame = page.frameLocator('iframe[title="Wearer Room"]');
+    const revokeBtn = wearerFrame.getByRole('button', { name: /Revoke Pass/i });
+    await expect(revokeBtn).toBeVisible({ timeout: 10000 });
+    await revokeBtn.click();
+
+    // 4. Modal is visible
+    await expect(wearerFrame.getByText(/Revoke Try-On Pass\?/i)).toBeVisible();
+
+    // 5. Press Escape to close modal
+    await wearerFrame.locator('body').press('Escape');
+    await expect(wearerFrame.getByText(/Revoke Try-On Pass\?/i)).not.toBeVisible();
   });
 });

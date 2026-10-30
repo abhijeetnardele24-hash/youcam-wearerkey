@@ -17,7 +17,7 @@ export default {
         ink: {
           DEFAULT: '#15201D',
           muted: '#4A5854',
-          subtle: '#788782',
+          subtle: '#556561',
         },
         wearer: {
           light: '#EBF3F0',

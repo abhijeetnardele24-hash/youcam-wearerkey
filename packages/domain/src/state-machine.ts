@@ -5,7 +5,7 @@ import type { SessionStatus, ProposalStatus } from "@wearerkey/contracts";
  * DRAFT -> READY -> ACTIVE -> REVOKED
  *                   |  |
  *                   |  +-> EXPIRED
- *                   +----> COMPLETED -> PURGING -> PURGED | PURGE_PARTIAL
+ *                   +----> COMPLETED -> PURGED
  */
 const ALLOWED_SESSION_TRANSITIONS: Record<SessionStatus, SessionStatus[]> = {
   DRAFT: ["READY", "REVOKED"],
@@ -37,21 +37,20 @@ export function transitionSession(currentStatus: SessionStatus, nextStatus: Sess
 
 /**
  * Allowed Proposal State Transitions
- * CREATED -> GATE_BLOCKED
- *    |
- *    +-> READY -> UPLOADING -> SUBMITTED -> PROCESSING
- *                                       |          |
- *                                       |          +-> SUCCEEDED -> REVIEWED
- *                                       +------------> FAILED
+ * CREATED -> READY -> UPLOADING -> SUBMITTED -> PROCESSING
+ *    |                                       |          |
+ *    |                                       |          +-> SUCCEEDED -> REVIEWED
+ *    |                                       +------------> FAILED
+ *    +-> REJECTED_CONSENT
  */
 const ALLOWED_PROPOSAL_TRANSITIONS: Record<ProposalStatus, ProposalStatus[]> = {
-  CREATED: ["GATE_BLOCKED", "READY", "FAILED"],
-  GATE_BLOCKED: ["READY", "FAILED"],
-  READY: ["UPLOADING", "FAILED"],
+  CREATED: ["READY", "SUBMITTED", "REJECTED_CONSENT", "FAILED"],
+  READY: ["UPLOADING", "SUBMITTED", "FAILED"],
   UPLOADING: ["SUBMITTED", "FAILED"],
   SUBMITTED: ["PROCESSING", "FAILED"],
   PROCESSING: ["SUCCEEDED", "FAILED"],
   SUCCEEDED: ["REVIEWED", "FAILED"],
+  REJECTED_CONSENT: [],
   REVIEWED: [],
   FAILED: []
 };

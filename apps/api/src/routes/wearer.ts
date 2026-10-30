@@ -3,8 +3,8 @@ import { eq } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { SubmitDecisionRequestSchema } from "@wearerkey/contracts";
-import { decryptProviderIdentifier } from "@wearerkey/domain";
+import { SubmitDecisionRequestSchema, type DeletionStatus } from "@wearerkey/contracts";
+import { decryptProviderIdentifier, signReceiptPayload } from "@wearerkey/domain";
 import { config } from "../config.js";
 import { getDb } from "../db/index.js";
 import { relaySessions, proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
@@ -300,7 +300,7 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // 6. Wearer Scoped Privacy & Deletion Receipt
+  // 6. Wearer Scoped Privacy & Deletion Receipt (Signed Tamper-Evident Receipt v2.0)
   fastify.get(
     "/api/wearer/receipt",
     { preHandler: [requireRole("wearer")] },
@@ -314,17 +314,50 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
         .innerJoin(proposals, eq(providerTasks.proposalId, proposals.id))
         .where(eq(proposals.sessionId, auth.sessionId));
 
-      return reply.send({
-        schema_version: "1.0",
+      const totalTasks = taskRows.length;
+      const deletedTasks = taskRows.filter((t) => t.provider_tasks.taskDeletionStatus === "CONFIRMED").length;
+      const failedTasks = taskRows.filter((t) => t.provider_tasks.taskDeletionStatus === "FAILED").length;
+
+      const propRows = await db
+        .select()
+        .from(proposals)
+        .where(eq(proposals.sessionId, auth.sessionId));
+
+      const garmentFiles = propRows.filter((p) => !!p.garmentFileIdCiphertext);
+      const garmentDeleted = propRows.filter((p) => p.garmentDeletionStatus === "CONFIRMED").length;
+
+      const totalFiles = (auth.session.sourceFileIdCiphertext ? 1 : 0) + garmentFiles.length;
+      const deletedFiles = (auth.session.sourceDeletionStatus === "CONFIRMED" ? 1 : 0) + garmentDeleted;
+
+      const taskStatus: DeletionStatus =
+        totalTasks === 0 ? "NOT_REQUESTED" : failedTasks > 0 ? (deletedTasks > 0 ? "PARTIAL_FAILURE" : "FAILED") : "CONFIRMED";
+      const garmentStatus: DeletionStatus =
+        garmentFiles.length === 0 ? "NOT_REQUESTED" : garmentDeleted === garmentFiles.length ? "CONFIRMED" : "PARTIAL_FAILURE";
+
+      const receiptPayload: any = {
+        schema_version: "2.0",
         session_id: auth.sessionId,
-        status: auth.session.status,
         revoked_at: auth.session.revokedAt ? auth.session.revokedAt.toISOString() : null,
         purged_at: auth.session.purgedAt ? auth.session.purgedAt.toISOString() : null,
-        provider_tasks_total: taskRows.length,
+        overall_deletion_status: auth.session.deletionStatus,
+        task_deletion_status: taskStatus,
+        source_file_deletion_status: auth.session.sourceDeletionStatus,
+        garment_file_deletion_status: garmentStatus,
+        provider_tasks_total: totalTasks,
+        provider_tasks_deleted: deletedTasks,
+        remote_files_total: totalFiles,
+        remote_files_deleted: deletedFiles,
+        in_memory_buffers_purged: auth.session.status === "REVOKED",
         local_access_revoked: auth.session.status === "REVOKED",
         evaluated_commit_sha: process.env.GIT_COMMIT_SHA || "unknown",
-        evidence_authority: "WEARERKEY_AUDITABLE_LEDGER"
-      });
+        evidence_authority: "WEARERKEY_AUDITABLE_LEDGER",
+        deletion_error: auth.session.deletionError || null
+      };
+
+      const signatureInfo = signReceiptPayload(receiptPayload, config.ENCRYPTION_KEY_HEX);
+      receiptPayload.receipt_hmac = signatureInfo;
+
+      return reply.send(receiptPayload);
     }
   );
 };

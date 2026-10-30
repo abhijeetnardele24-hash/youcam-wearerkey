@@ -4,9 +4,9 @@
 
 - **Title:** WearerKey — Private Collaborative Virtual Try-On
 - **Tagline:** Shop together without sharing the wearer's photo.
-- **Hackathon:** YouCam API Skin AI & eCommerce VTO Hackathon 2026
+- **Hackathon:** Perfect Corp AI Hackathon 2026 (Skin AI & eCommerce VTO)
 - **Repository:** `https://github.com/abhijeetnardele24-hash/youcam-wearerkey`
-- **Built with:** YouCam AI Clothes V4, Fastify, TypeScript, React 18, Vite, TailwindCSS, Sharp, PGlite, Zod, Vitest.
+- **Built with:** YouCam AI Clothes V4, Fastify, TypeScript, React 18, Vite, TailwindCSS, Sharp, PGlite, Zod, Vitest, Playwright.
 
 ---
 
@@ -28,8 +28,8 @@ We asked: **What if shopping companions could curate outfits and request virtual
 2. **Role-Separated Helper Workspace:** The wearer shares a single-use **Helper Link**. The helper can search online stores, upload garment product photos, and request virtual try-ons—but the helper's interface **strictly never displays the wearer's photo or try-on render**.
 3. **Server-Enforced YouCam Orchestration:** When a try-on is requested, WearerKey validates the proposal against the Consent Gate, sanitizes EXIF data in memory with Sharp, and dispatches an asynchronous task to YouCam's official Clothes V4 API (`/s2s/v2.0/task/cloth-v4`).
 4. **Private Fitting Mirror:** The resulting try-on render streams directly into the **Wearer's Private Mirror only**, watermarked with responsible AI disclaimers.
-5. **Decisive Feedback Slips:** The wearer casts a standardized verdict (**Approve / Maybe / Pass**) and writes a safe note (e.g., *"Love the collar, but prefer a darker shade"*). The helper receives only this feedback signal.
-6. **Automatic Deletion Receipts:** Once the session is completed or revoked, WearerKey requests immediate deletion of remote provider files and issues a cryptographic audit receipt.
+5. **Decisive Feedback Slips:** The wearer casts a standardized verdict (**Approve / Maybe / Pass**) and writes a safe note (e.g., *"Love the drape, ordering medium"*). The helper receives only this feedback signal.
+6. **Cryptographic Deletion Receipts:** Once the session is completed or revoked, WearerKey executes immediate deletion requests against remote provider tasks and files, producing an HMAC-SHA256 signed audit receipt v2.0 proving data purge.
 
 ---
 
@@ -53,7 +53,7 @@ We asked: **What if shopping companions could curate outfits and request virtual
 ## Accomplishments We're Proud Of
 
 - **30-Second Judge Tour:** Evaluators can visit `/judge` and launch a pre-seeded, side-by-side interactive split screen that demonstrates the cryptographic boundary live in 30 seconds.
-- **42 Automated Tests Passing (36 Vitest + 6 Playwright/Axe):** Complete coverage of cryptographic domain primitives, consent gates, YouCam Clothes V4 contract mocks, state transitions, end-to-end two-role API integration, and WCAG accessibility.
+- **46 Automated Tests Passing (38 Vitest + 8 Playwright/Axe):** Complete coverage of cryptographic domain primitives, consent gates, YouCam Clothes V4 contract mocks, state transitions, end-to-end two-role API integration, and WCAG 2.1 AA accessibility.
 - **Single-Container Unified Delivery:** Fastify serves both the secure API and the production-built React frontend with zero external runtime dependencies.
 
 ---

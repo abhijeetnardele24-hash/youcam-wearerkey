@@ -1,0 +1,75 @@
+{
+  "project": "WearerKey",
+  "evaluated_commit_sha": "d7811832234bd1fbd268eae3b34a9c73f4a7817f",
+  "audit_verdict": "INTERNAL_COMPLETE_EXTERNAL_ACTION_REQUIRED",
+  "timestamp": "2026-10-30T19:15:00.000Z",
+  "engine": "YouCam AI Clothes V4",
+  "evidence": {
+    "monorepo_build": {
+      "status": "PASSED",
+      "packages": ["@wearerkey/contracts", "@wearerkey/domain", "@wearerkey/api", "@wearerkey/web"]
+    },
+    "test_suites": {
+      "vitest_unit_and_integration": {
+        "status": "PASSED",
+        "total": 38,
+        "passed": 38,
+        "failed": 0,
+        "files": [
+          "tests/unit/domain.test.ts",
+          "tests/unit/youcam-provider.test.ts",
+          "tests/integration/api.test.ts"
+        ]
+      },
+      "playwright_browser_e2e": {
+        "status": "PASSED",
+        "total": 8,
+        "passed": 8,
+        "failed": 0,
+        "viewports": ["Desktop Chrome (1280x720)", "Mobile Viewport (390x844)"]
+      }
+    },
+    "accessibility": {
+      "standard": "WCAG 2.1 AA",
+      "axe_violations": 0,
+      "tested_views": [
+        "Home Page (/)",
+        "Create Pass Page (/create)",
+        "Judge Tour Page (/judge)"
+      ]
+    },
+    "security": {
+      "secrets_detected": 0,
+      "capability_token_storage": "SHA-256 hash at rest, constant-time timingSafeEqual comparison",
+      "identifier_encryption": "AES-256-GCM authenticated encryption",
+      "privacy_boundary": "Server-enforced role segregation; helper routes completely omit image buffers and URLs",
+      "logger_redaction": "Pino redacting Authorization, Cookie, Set-Cookie, and tokens"
+    },
+    "youcam_api": {
+      "provider_family": "AI_CLOTHES_V4",
+      "base_url": "https://yce-api-01.makeupar.com",
+      "live_execution_verified": false,
+      "live_mode_flag": "--require-live",
+      "fallback_mode": "DEMO_FIXTURE",
+      "endpoints_implemented": [
+        "POST /s2s/v2.0/file",
+        "POST /s2s/v2.0/task/cloth-v4",
+        "GET /s2s/v2.0/task/cloth-v4/{taskId}",
+        "POST /s2s/v2.0/task/delete",
+        "DELETE /s2s/v2.0/file/{fileId}"
+      ]
+    },
+    "deletion_and_receipts": {
+      "schema_version": "2.0",
+      "state_machine": ["NOT_REQUESTED", "REQUESTED", "CONFIRMED", "PARTIAL_FAILURE", "FAILED"],
+      "tamper_evidence": "HMAC-SHA256 signature with alphabetical key canonicalization",
+      "purge_invariant": "purged_at strictly null when any provider deletion is unconfirmed"
+    },
+    "external_actions_required": {
+      "live_youcam_key": "Requires user to set YOUCAM_API_KEY environment variable and run scripts/live-youcam-smoke.ts",
+      "cloud_deployment": "Requires deployment to public hosting platform (e.g. Render, Railway, Fly.io)",
+      "demo_video": "Requires screen recording following docs/VIDEO_STORYBOARD.md",
+      "devpost_submission": "Requires final form submission on Devpost portal"
+    }
+  }
+}

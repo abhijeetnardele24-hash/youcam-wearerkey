@@ -33,7 +33,7 @@ For millions of people, this is a privacy barrier due to body sensitivity, perso
 - **In-Memory Sanitization:** Before sending images to YouCam's File API, GPS coordinates, device tags, and camera metadata are stripped in memory via Sharp.
 - **Capability Tokens:** Role authorization is governed by cryptographically random 32-byte capability tokens stored solely as SHA-256 hashes and compared in constant time (`crypto.timingSafeEqual`).
 - **Encrypted Provider Identifiers:** Remote task IDs and ephemeral provider URLs are encrypted at rest using AES-256-GCM.
-- **Automated Provider Purge:** Once the private fitting result is proxied, WearerKey initiates an immediate deletion request for the remote file ID, producing a signed audit receipt.
+- **Provider Deletion Lifecycle:** WearerKey issues explicit deletion requests (`DELETE /s2s/v2.0/file/{fileId}` and `POST /s2s/v2.0/task/delete`) upon session completion or revocation, producing a signed HMAC audit receipt.
 
 ---
 
@@ -56,7 +56,7 @@ WearerKey integrates with Perfect Corp's official YouCam Clothes V4 Server-to-Se
 - **File Upload:** `POST /s2s/v2.0/file` (uploads reference and candidate garments, receives ephemeral file IDs).
 - **Task Dispatch:** `POST /s2s/v2.0/task/cloth-v4` (executes virtual garment drape across supported categories: `upper_body`, `lower_body`, `full_body`, `outer`, `shoes`, `auto`).
 - **Asynchronous Polling:** `GET /s2s/v2.0/task/cloth-v4/{taskId}` with exponential backoff.
-- **Remote Deletion:** `DELETE /s2s/v2.0/file/{fileId}` upon completion.
+- **Remote Deletion:** `DELETE /s2s/v2.0/file/{fileId}` and `POST /s2s/v2.0/task/delete` upon completion.
 - **Fail-Closed Provider Modes:**
   - `LIVE_YOUCAM`: Active when `YOUCAM_API_KEY` is present.
   - `RECORDED_LIVE_RESULT`: Transparent replay of genuine YouCam test fixtures when key is unconfigured.
@@ -88,8 +88,12 @@ cp .env.example .env
 # Run master verification suite (unit tests, integration tests, web build, security scan, claims check)
 pnpm run verify
 
-# Start unified development server (API on port 3000 serving React SPA frontend)
+# Mode A: Development Mode (Vite on port 3000 proxying /api to Fastify on port 4000)
 pnpm dev
+
+# Mode B: Production / Standalone Mode (Unified Fastify server on port 3000 serving API + built SPA)
+pnpm build
+pnpm start
 ```
 
 Visit `http://localhost:3000` in your browser.
@@ -119,9 +123,15 @@ youcam-wearerkey/
 │   ├── YOUCAM_INTEGRATION.md    # Detailed Perfect Corp Clothes V4 API specification
 │   ├── DEVPOST_SUBMISSION.md    # Complete Devpost submission package
 │   ├── JUDGE_TOUR.md            # Evaluator 30-second walkthrough guide
+│   ├── THREAT_MODEL.md          # Comprehensive security threat analysis & mitigations
+│   ├── EVALUATION.md            # Full verification report, benchmarks & test ledger
+│   ├── VIDEO_STORYBOARD.md      # Timed script & visual storyboard for demo video
+│   ├── SUBMISSION_CHECKLIST.md  # Official checklist with truthful auditor verdict
+│   ├── evidence-index.json      # Structured machine-readable compliance index
+│   ├── deployment-receipt.json  # Port setup and deployment verification receipt
 │   └── live-youcam-receipt.json # Truthful machine-verifiable connectivity receipt
-├── scripts/                     # Live smoke, security secret scanner, claims auditor
-└── tests/                       # Unit tests & end-to-end role authorization tests
+├── scripts/                     # Master verifier, live smoke, security scanner, claims auditor
+└── tests/                       # Unit tests, integration tests & Playwright e2e/axe tests
 ```
 
 ---
