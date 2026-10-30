@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { healthRoutes } from "./routes/health.js";
@@ -37,24 +38,34 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
-  // Serve static assets (e.g. sample photos for demo)
-  const assetsDir = path.resolve(__dirname, "../public");
-  try {
-    await app.register(fastifyStatic, {
-      root: assetsDir,
-      prefix: "/assets/"
-    });
-  } catch {
-    // If public directory doesn't exist yet, continue safely
-  }
-
-  // Register API Routes
+  // Register API Routes first
   await app.register(healthRoutes);
   await app.register(sessionRoutes);
   await app.register(wearerRoutes);
   await app.register(helperRoutes);
   await app.register(eventRoutes);
   await app.register(judgeRoutes);
+
+  // Serve Built Web Frontend (SPA) if present
+  const webDistDir = path.resolve(__dirname, "../../web/dist");
+  if (fs.existsSync(webDistDir)) {
+    await app.register(fastifyStatic, {
+      root: webDistDir,
+      prefix: "/",
+      wildcard: false
+    });
+
+    // SPA fallback: return index.html for non-API GET requests
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === "GET" && !req.url.startsWith("/api/")) {
+        const indexPath = path.join(webDistDir, "index.html");
+        if (fs.existsSync(indexPath)) {
+          return reply.type("text/html").send(fs.readFileSync(indexPath));
+        }
+      }
+      return reply.status(404).send({ error: "NOT_FOUND", message: "Resource not found" });
+    });
+  }
 
   return app;
 }
@@ -63,7 +74,7 @@ async function start() {
   const app = await buildApp();
   try {
     await app.listen({ port: config.PORT, host: config.HOST });
-    console.log(`🚀 WearerKey API running at http://${config.HOST}:${config.PORT}`);
+    console.log(`🚀 WearerKey unified server running at http://${config.HOST}:${config.PORT}`);
     console.log(`   Provider Mode: ${config.YOUCAM_PROVIDER_MODE}`);
     console.log(`   YouCam Host: ${config.YOUCAM_BASE_URL}`);
   } catch (err) {
