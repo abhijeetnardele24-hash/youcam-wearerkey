@@ -1,6 +1,6 @@
 # WearerKey — 30-Second Judge Tour Guide
 
-Welcome hackathon judges! This guide enables you to verify the entire WearerKey two-role collaborative protocol and its zero-knowledge privacy boundary in **under 30 seconds**.
+Welcome hackathon judges! This guide enables you to verify the entire WearerKey two-role collaborative protocol and its server-enforced privacy boundary in **under 30 seconds**.
 
 ---
 

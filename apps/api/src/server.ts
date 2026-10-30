@@ -4,7 +4,7 @@ import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import path from "node:path";
 import fs from "node:fs";
-import { fileURLToPath } from "node:url";
+import url, { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { healthRoutes } from "./routes/health.js";
 import { sessionRoutes } from "./routes/sessions.js";
@@ -23,9 +23,29 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
-  // CORS
+  // Security Headers
+  app.addHook("onSend", async (_request, reply) => {
+    reply.header(
+      "Content-Security-Policy",
+      "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; script-src 'self' 'unsafe-inline';"
+    );
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "SAMEORIGIN");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  });
+
+  // CORS: Explicit allowlist
+  const allowedOrigins = config.CORS_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
   await app.register(cors, {
-    origin: true,
+    origin: (origin, cb) => {
+      // Allow requests with no origin (like mobile apps, curl, server-to-server)
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+        return cb(null, true);
+      }
+      return cb(new Error("CORS origin not allowed by WearerKey security policy"), false);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   });
@@ -38,7 +58,17 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
-  // Register API Routes first
+  // Serve static demo assets if directory exists
+  const publicDir = path.resolve(__dirname, "../public");
+  if (fs.existsSync(publicDir)) {
+    await app.register(fastifyStatic, {
+      root: publicDir,
+      prefix: "/assets/",
+      decorateReply: true
+    });
+  }
+
+  // Register API Routes
   await app.register(healthRoutes);
   await app.register(sessionRoutes);
   await app.register(wearerRoutes);
@@ -52,7 +82,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     await app.register(fastifyStatic, {
       root: webDistDir,
       prefix: "/",
-      wildcard: false
+      wildcard: false,
+      decorateReply: false // Already decorated by public assets if present
     });
 
     // SPA fallback: return index.html for non-API GET requests
@@ -83,6 +114,18 @@ async function start() {
   }
 }
 
-if (process.env.NODE_ENV !== "test" && import.meta.url.endsWith(process.argv[1] || "")) {
+function isDirectExecution(): boolean {
+  if (process.env.NODE_ENV === "test") return false;
+  const scriptPath = process.argv[1];
+  if (!scriptPath) return false;
+  try {
+    const scriptUrl = url.pathToFileURL(path.resolve(scriptPath)).href;
+    return import.meta.url === scriptUrl || scriptPath.endsWith("server.ts") || scriptPath.endsWith("server.js");
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectExecution()) {
   start();
 }

@@ -180,5 +180,77 @@ describe("WearerKey End-to-End API Integration", () => {
     expect(hData.proposals[0].wearer_note).toContain("drape and cut look great");
     expect(hData.proposals[0].result_stream_url).toBeUndefined();
     expect(hData.proposals[0].result_url).toBeUndefined();
+
+    // Check Wearer Source Photo endpoint: Wearer has access, Helper is blocked
+    const wearerSourceRes = await app.inject({
+      method: "GET",
+      url: "/api/wearer/session/source",
+      headers: {
+        Authorization: `Bearer ${seedData.wearer_token}`
+      }
+    });
+    expect(wearerSourceRes.statusCode).toBe(200);
+    expect(wearerSourceRes.headers["content-type"]).toBe("image/png");
+
+    const helperSourceAttempt = await app.inject({
+      method: "GET",
+      url: "/api/wearer/session/source",
+      headers: {
+        Authorization: `Bearer ${seedData.helper_token}`
+      }
+    });
+    expect(helperSourceAttempt.statusCode).toBe(403);
+
+    // Check Result Stream endpoint: Wearer has access, Helper is blocked
+    const proposalId = wData.proposals[0].id;
+    const wearerResultRes = await app.inject({
+      method: "GET",
+      url: `/api/wearer/proposals/${proposalId}/result`,
+      headers: {
+        Authorization: `Bearer ${seedData.wearer_token}`
+      }
+    });
+    expect(wearerResultRes.statusCode).toBe(200);
+    expect(wearerResultRes.headers["content-type"]).toBe("image/png");
+
+    const helperResultAttempt = await app.inject({
+      method: "GET",
+      url: `/api/wearer/proposals/${proposalId}/result`,
+      headers: {
+        Authorization: `Bearer ${seedData.helper_token}`
+      }
+    });
+    expect(helperResultAttempt.statusCode).toBe(403);
+
+    // Check Wearer Scoped Privacy & Deletion Receipt
+    const receiptRes = await app.inject({
+      method: "GET",
+      url: "/api/wearer/receipt",
+      headers: {
+        Authorization: `Bearer ${seedData.wearer_token}`
+      }
+    });
+    expect(receiptRes.statusCode).toBe(200);
+    const receiptData = receiptRes.json();
+    expect(receiptData.schema_version).toBe("1.0");
+    expect(receiptData.evidence_authority).toBe("WEARERKEY_AUDITABLE_LEDGER");
+  });
+
+  it("Enforces capability authorization on SSE /api/events", async () => {
+    // 1. Missing token -> 401
+    const noTokenRes = await app.inject({
+      method: "GET",
+      url: "/api/events"
+    });
+    expect(noTokenRes.statusCode).toBe(401);
+    expect(noTokenRes.json().error).toBe("UNAUTHORIZED");
+
+    // 2. Invalid token -> 401
+    const badTokenRes = await app.inject({
+      method: "GET",
+      url: "/api/events?token=totally_invalid_token_12345"
+    });
+    expect(badTokenRes.statusCode).toBe(401);
+    expect(badTokenRes.json().error).toBe("UNAUTHORIZED");
   });
 });

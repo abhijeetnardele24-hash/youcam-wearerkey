@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type Metadata } from "sharp";
 import { calculateContentHash } from "@wearerkey/domain";
 
 export interface SanitizedImage {
@@ -18,8 +18,38 @@ export class ImageValidationError extends Error {
 }
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
-const MIN_DIMENSION = 512;
+const MIN_DIMENSION = 256;
 const MAX_DIMENSION = 4096;
+
+function validateMagicBytes(buffer: Buffer): "image/jpeg" | "image/png" {
+  if (buffer.length < 8) {
+    throw new ImageValidationError("File is truncated or empty", "TRUNCATED_FILE");
+  }
+
+  // JPEG magic bytes: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+
+  // PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+
+  throw new ImageValidationError(
+    "Uploaded file magic bytes do not match standard JPEG or PNG signatures.",
+    "UNSUPPORTED_FORMAT"
+  );
+}
 
 export async function sanitizeAndValidateImage(rawBuffer: Buffer): Promise<SanitizedImage> {
   if (rawBuffer.length > MAX_IMAGE_BYTES) {
@@ -29,14 +59,20 @@ export async function sanitizeAndValidateImage(rawBuffer: Buffer): Promise<Sanit
     );
   }
 
-  // 1. Inspect image metadata via Sharp
-  let metadata: sharp.Metadata;
+  // 1. Verify real file magic bytes (prevent mime spoofing)
+  const detectedMime = validateMagicBytes(rawBuffer);
+
+  // 2. Decode and inspect with Sharp (bounded against decompression bombs)
+  let metadata: Metadata;
   try {
-    const probe = sharp(rawBuffer);
-    metadata = await probe.metadata();
-  } catch (err) {
+    const instance = sharp(rawBuffer, {
+      failOn: "error",
+      limitInputPixels: MAX_DIMENSION * MAX_DIMENSION
+    });
+    metadata = await instance.metadata();
+  } catch (err: any) {
     throw new ImageValidationError(
-      "Uploaded file is not a valid JPEG or PNG image",
+      `Corrupt or malformed image data: ${err.message}`,
       "INVALID_FORMAT"
     );
   }
@@ -49,8 +85,15 @@ export async function sanitizeAndValidateImage(rawBuffer: Buffer): Promise<Sanit
     );
   }
 
-  const width = metadata.width || 0;
-  const height = metadata.height || 0;
+  // Auto-orient based on EXIF before measuring final dimensions
+  const orientedInstance = sharp(rawBuffer, {
+    failOn: "error",
+    limitInputPixels: MAX_DIMENSION * MAX_DIMENSION
+  }).rotate();
+
+  const orientedMeta = await orientedInstance.metadata();
+  const width = orientedMeta.width || metadata.width || 0;
+  const height = orientedMeta.height || metadata.height || 0;
 
   if (width < MIN_DIMENSION || height < MIN_DIMENSION) {
     throw new ImageValidationError(
@@ -66,29 +109,36 @@ export async function sanitizeAndValidateImage(rawBuffer: Buffer): Promise<Sanit
     );
   }
 
-  // 2. Re-encode image in-memory to strip all EXIF metadata and malicious embedded payloads
+  // 3. Re-encode image in-memory to strip all EXIF, GPS, camera metadata, and thumbnails
   let sanitizedBuffer: Buffer;
-  let mimeType: "image/jpeg" | "image/png";
+  let finalMime: "image/jpeg" | "image/png";
 
-  if (format === "png") {
-    sanitizedBuffer = await sharp(rawBuffer)
-      .rotate() // auto-orient based on EXIF before stripping
+  if (detectedMime === "image/png" && format === "png") {
+    sanitizedBuffer = await sharp(rawBuffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION })
+      .rotate()
       .png({ compressionLevel: 8 })
       .toBuffer();
-    mimeType = "image/png";
+    finalMime = "image/png";
   } else {
-    sanitizedBuffer = await sharp(rawBuffer)
+    sanitizedBuffer = await sharp(rawBuffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION })
       .rotate()
-      .jpeg({ quality: 92, mozjpeg: true })
+      .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
-    mimeType = "image/jpeg";
+    finalMime = "image/jpeg";
+  }
+
+  if (sanitizedBuffer.length > MAX_IMAGE_BYTES) {
+    throw new ImageValidationError(
+      "Sanitized image output exceeds size limits.",
+      "FILE_TOO_LARGE"
+    );
   }
 
   const contentHash = calculateContentHash(sanitizedBuffer);
 
   return {
     buffer: sanitizedBuffer,
-    mimeType,
+    mimeType: finalMime,
     width,
     height,
     contentHash,

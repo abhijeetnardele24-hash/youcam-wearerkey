@@ -7,10 +7,10 @@ export const BoundaryDiagram: React.FC = () => {
       <div className="text-center max-w-xl mx-auto mb-6">
         <span className="seal-badge seal-wearer mb-2">Architectural Guarantee</span>
         <h3 className="font-serif text-xl font-bold text-ink">
-          The WearerKey Zero-Knowledge Shopping Boundary
+          The WearerKey Role-Separated Shopping Boundary
         </h3>
         <p className="text-xs text-ink-muted mt-1">
-          How WearerKey orchestrates YouCam AI Clothes V4 while guaranteeing that the helper never receives the wearer's photo or raw VTO render.
+          How WearerKey orchestrates YouCam AI Clothes V4 with capability-isolated access, guaranteeing that the helper never receives the wearer's photo or raw VTO render.
         </p>
       </div>
 

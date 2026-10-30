@@ -12,13 +12,21 @@ import { AboutPage } from './pages/AboutPage';
 export const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-parchment text-ink font-sans">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:p-2.5 focus:bg-white focus:text-ink focus:border focus:border-stone focus:shadow-md focus:rounded text-xs font-semibold"
+      >
+        Skip to content
+      </a>
       <Header />
-      <main className="flex-1 pb-16">
+      <main id="main-content" tabIndex={-1} className="flex-1 pb-16 focus:outline-none">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/create" element={<CreatePassPage />} />
           <Route path="/wearer/:token" element={<WearerRoomPage />} />
+          <Route path="/wearer" element={<WearerRoomPage />} />
           <Route path="/helper/:token" element={<HelperRoomPage />} />
+          <Route path="/helper" element={<HelperRoomPage />} />
           <Route path="/receipt/:token" element={<ReceiptPage />} />
           <Route path="/judge" element={<JudgeTourPage />} />
           <Route path="/about" element={<AboutPage />} />

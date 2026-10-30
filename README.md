@@ -15,7 +15,7 @@ Collaborative shopping is one of the most natural social behaviors in fashion: s
 
 For millions of people, this is a privacy barrier due to body sensitivity, personal boundaries, religious practices, or workplace confidentiality.
 
-**WearerKey solves this with a zero-knowledge collaboration protocol:**
+**WearerKey solves this with a role-separated private collaboration protocol:**
 1. **The Wearer** defines an immutable **Consent Seal** (permitted garment categories, candidate cap, expiration) and uploads their private reference photo.
 2. **The Wearer** shares a cryptographically scoped **Helper Link** with a shopping companion.
 3. **The Helper** proposes garments from online stores matching the allowed categories, but **NEVER sees or receives the wearer's photo or try-on render.**
@@ -24,7 +24,7 @@ For millions of people, this is a privacy barrier due to body sensitivity, perso
 
 ---
 
-## 2. Architecture & The Zero-Knowledge Boundary
+## 2. Architecture & The Server-Enforced Privacy Boundary
 
 ![WearerKey Architecture](docs/assets/architecture-diagram.svg)
 
@@ -115,7 +115,7 @@ youcam-wearerkey/
 ├── docs/                        # Complete documentation, receipts, and SVG assets
 │   ├── assets/                  # Architecture diagrams & 1280x720 Devpost thumbnail
 │   ├── ARCHITECTURE.md          # In-depth architectural blueprint & trust boundaries
-│   ├── PRIVACY_MODEL.md         # Zero-knowledge threat model & authorization invariants
+│   ├── PRIVACY_MODEL.md         # Role-separated threat model & authorization invariants
 │   ├── YOUCAM_INTEGRATION.md    # Detailed Perfect Corp Clothes V4 API specification
 │   ├── DEVPOST_SUBMISSION.md    # Complete Devpost submission package
 │   ├── JUDGE_TOUR.md            # Evaluator 30-second walkthrough guide

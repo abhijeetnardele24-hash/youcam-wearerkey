@@ -156,7 +156,7 @@ export const CreatePassPage: React.FC = () => {
                     key={cat.id}
                     type="button"
                     onClick={() => toggleCategory(cat.id)}
-                    className={`p-3 rounded border text-left transition-all flex items-start justify-between ${
+                    className={`p-3 rounded border text-left transition-colors flex items-start justify-between ${
                       isChecked
                         ? 'bg-wearer-light border-wearer text-wearer'
                         : 'bg-white border-stone text-ink-muted hover:bg-stone-light/30'

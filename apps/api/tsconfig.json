@@ -7,9 +7,16 @@
     "declarationMap": true,
     "sourceMap": true,
     "strict": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
+  "references": [
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/domain" }
+  ],
   "include": ["src/**/*"]
 }

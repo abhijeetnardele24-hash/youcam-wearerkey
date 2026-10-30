@@ -22,8 +22,9 @@ COPY apps/ ./apps/
 COPY tsconfig.json ./
 
 # Build packages and web frontend
-RUN pnpm --filter @wearerkey/contracts build || true
-RUN pnpm --filter @wearerkey/domain build || true
+RUN pnpm --filter @wearerkey/contracts build
+RUN pnpm --filter @wearerkey/domain build
+RUN pnpm --filter @wearerkey/api build
 RUN pnpm --filter @wearerkey/web build
 
 # --- Runtime stage ---
@@ -37,7 +38,10 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 
-COPY --from=builder /app /app
+COPY --from=builder --chown=node:node /app /app
+
+# Run as non-root user
+USER node
 
 EXPOSE 3000
 

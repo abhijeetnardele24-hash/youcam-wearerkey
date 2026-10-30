@@ -1,12 +1,11 @@
 {
-  "evaluated_commit_sha": "ee8cf14c4ab27f15b05466bcc08ca42b8ee0d0cf",
-  "provider_mode": "NOT_CONFIGURED_FIXTURE_MODE",
+  "evaluated_commit_sha": "775802c4af2bd119dd47014803985436e5aa9391",
+  "provider_mode": "DEMO_FIXTURE",
   "endpoint": "https://yce-api-01.makeupar.com",
-  "timestamp": "2026-10-30T15:29:01.989Z",
-  "connectivity_status": "OFFLINE",
-  "http_status": 405,
+  "timestamp": "2026-10-30T17:45:02.427Z",
+  "connectivity_status": "BLOCKED_MISSING_KEY",
+  "http_status": 0,
   "live_execution_verified": false,
   "model_name": "YouCam AI Clothes V4",
-  "latency_ms": 1663,
-  "error": "YOUCAM_API_KEY not configured. System operating in deterministic DEMO_FIXTURE / RECORDED_LIVE_RESULT mode."
+  "reason": "YOUCAM_API_KEY not configured. System operating in deterministic DEMO_FIXTURE / RECORDED_LIVE_RESULT mode without fabricating live execution."
 }

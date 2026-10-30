@@ -25,7 +25,7 @@ We asked: **What if shopping companions could curate outfits and request virtual
 **WearerKey** is a private collaborative virtual try-on protocol powered by **Perfect Corp's YouCam AI Clothes V4 API**:
 
 1. **Private Wearer Setup:** The wearer sets an immutable **Consent Seal** (approved garment categories like tops, outerwear, or dresses; maximum candidate cap; expiration duration) and privately uploads their reference photo.
-2. **Zero-Knowledge Helper Workspace:** The wearer shares a single-use **Helper Link**. The helper can search online stores, upload garment product photos, and request virtual try-ons—but the helper's interface **strictly never displays the wearer's photo or try-on render**.
+2. **Role-Separated Helper Workspace:** The wearer shares a single-use **Helper Link**. The helper can search online stores, upload garment product photos, and request virtual try-ons—but the helper's interface **strictly never displays the wearer's photo or try-on render**.
 3. **Server-Enforced YouCam Orchestration:** When a try-on is requested, WearerKey validates the proposal against the Consent Gate, sanitizes EXIF data in memory with Sharp, and dispatches an asynchronous task to YouCam's official Clothes V4 API (`/s2s/v2.0/task/cloth-v4`).
 4. **Private Fitting Mirror:** The resulting try-on render streams directly into the **Wearer's Private Mirror only**, watermarked with responsible AI disclaimers.
 5. **Decisive Feedback Slips:** The wearer casts a standardized verdict (**Approve / Maybe / Pass**) and writes a safe note (e.g., *"Love the collar, but prefer a darker shade"*). The helper receives only this feedback signal.
@@ -44,7 +44,7 @@ We asked: **What if shopping companions could curate outfits and request virtual
 
 ## Challenges We Overcame
 
-1. **Strict Zero-Knowledge Enforcement:** Ensuring that no combination of client-side inspection, DevTools network sniffing, or API parameter manipulation could ever reveal the wearer's photo to the helper required strict server-enforced route authorization and distinct DTO boundaries.
+1. **Strict Server-Enforced Privacy Boundary:** Ensuring that no combination of client-side inspection, DevTools network sniffing, or API parameter manipulation could ever reveal the wearer's photo to the helper required strict server-enforced route authorization and distinct DTO boundaries.
 2. **Ephemeral Provider Lifecycle:** Ensuring reference images do not persist on provider storage by coupling task completion with automated file deletion requests.
 3. **Truthfulness and Fail-Closed Engineering:** Designing clear distinctions between live YouCam execution, recorded live replays, and offline fixtures so the system never makes unverified claims.
 
@@ -53,7 +53,7 @@ We asked: **What if shopping companions could curate outfits and request virtual
 ## Accomplishments We're Proud Of
 
 - **30-Second Judge Tour:** Evaluators can visit `/judge` and launch a pre-seeded, side-by-side interactive split screen that demonstrates the cryptographic boundary live in 30 seconds.
-- **24/24 Automated Tests Passing:** Complete coverage of cryptographic domain primitives, consent gates, state transitions, and end-to-end two-role API integration.
+- **42 Automated Tests Passing (36 Vitest + 6 Playwright/Axe):** Complete coverage of cryptographic domain primitives, consent gates, YouCam Clothes V4 contract mocks, state transitions, end-to-end two-role API integration, and WCAG accessibility.
 - **Single-Container Unified Delivery:** Fastify serves both the secure API and the production-built React frontend with zero external runtime dependencies.
 
 ---

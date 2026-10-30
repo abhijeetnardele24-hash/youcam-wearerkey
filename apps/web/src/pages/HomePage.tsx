@@ -25,14 +25,14 @@ export const HomePage: React.FC = () => {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
           <Link
             to="/create"
-            className="w-full sm:w-auto px-6 py-3.5 rounded bg-wearer hover:bg-wearer-dark text-white font-semibold text-sm transition-all shadow-sm flex items-center justify-center gap-2 group"
+            className="w-full sm:w-auto px-6 py-3.5 rounded bg-wearer hover:bg-wearer-dark text-white font-semibold text-sm transition-colors shadow-sm flex items-center justify-center gap-2 group"
           >
             <span>Create a Try-On Pass</span>
             <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
           <Link
             to="/judge"
-            className="w-full sm:w-auto px-6 py-3.5 rounded bg-helper-light hover:bg-helper-light/80 text-helper border border-helper-border/40 font-semibold text-sm transition-all flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-6 py-3.5 rounded bg-helper-light hover:bg-helper-light/80 text-helper border border-helper-border/40 font-semibold text-sm transition-colors flex items-center justify-center gap-2"
           >
             <Sparkles className="w-4 h-4 text-helper" />
             <span>Launch 30-Second Judge Tour</span>
@@ -69,7 +69,7 @@ export const HomePage: React.FC = () => {
             <EyeOff className="w-5 h-5" />
           </div>
           <h3 className="font-serif text-lg font-bold text-ink mb-2">
-            Zero-Knowledge Curation
+            Capability-Isolated Curation
           </h3>
           <p className="text-xs text-ink-muted leading-relaxed">
             Friends, stylists, or partners propose garments within permitted categories. They get feedback through a standardized Decision Slip (Approve, Maybe, Pass) and safe notes.

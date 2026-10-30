@@ -18,7 +18,7 @@
   <g transform="translate(50, 45)">
     <rect x="0" y="-10" width="130" height="24" rx="12" fill="#EBF3F0" stroke="#337D68" stroke-width="1"/>
     <text x="65" y="6" text-anchor="middle" font-size="11" font-weight="700" fill="#1F624F" letter-spacing="0.5">PROTOCOL ARCHITECTURE</text>
-    <text x="0" y="42" font-family="'Playfair Display', Georgia, serif" font-size="28" font-weight="700" fill="#15201D">WearerKey: Zero-Knowledge Try-On Pipeline</text>
+    <text x="0" y="42" font-family="'Playfair Display', Georgia, serif" font-size="28" font-weight="700" fill="#15201D">WearerKey: Role-Separated Try-On Pipeline</text>
     <text x="0" y="66" font-size="13" fill="#4A5854">End-to-End Cryptographic Privacy Boundary for Perfect Corp YouCam AI Clothes V4</text>
   </g>
 
@@ -93,7 +93,7 @@
       <text x="12" y="117" font-size="10" fill="#4A5854">Product photo &amp; store link</text>
 
       <rect x="0" y="150" width="224" height="85" rx="4" fill="#F4EEF2" stroke="#8E5F7A"/>
-      <text x="12" y="172" font-size="12" font-weight="700" fill="#70465E">3. Zero-Knowledge Wall</text>
+      <text x="12" y="172" font-size="12" font-weight="700" fill="#70465E">3. Role Isolation Wall</text>
       <text x="12" y="192" font-size="10" font-weight="700" fill="#B64A35">NO WEARER PHOTOS</text>
       <text x="12" y="210" font-size="10" fill="#4A5854">No raw URLs or try-on pixels</text>
 

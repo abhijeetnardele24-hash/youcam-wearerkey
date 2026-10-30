@@ -86,6 +86,7 @@ export const Header: React.FC = () => {
           </Link>
           <Link
             to="/about"
+            aria-label="About & Model"
             className={`px-3 py-1.5 rounded transition-colors flex items-center gap-1 ${
               location.pathname === '/about'
                 ? 'bg-ink text-white'

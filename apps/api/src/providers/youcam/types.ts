@@ -45,4 +45,5 @@ export interface ClothesTryOnProvider {
   createTask(input: ClothesTaskInput): Promise<ProviderTask>;
   pollTask(taskId: string, timeoutMs?: number): Promise<ProviderTaskStatus>;
   deleteTask(taskId: string): Promise<ProviderDeletionResult>;
+  deleteFile(fileId: string): Promise<boolean>;
 }

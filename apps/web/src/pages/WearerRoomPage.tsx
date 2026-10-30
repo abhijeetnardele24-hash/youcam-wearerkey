@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
@@ -17,14 +17,50 @@ import {
   Sparkles,
   ExternalLink,
   RefreshCw,
+  User,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
 export const WearerRoomPage: React.FC = () => {
-  const { token } = useParams<{ token: string }>();
+  const { token: routeToken } = useParams<{ token: string }>();
   const queryClient = useQueryClient();
   const [copiedLink, setCopiedLink] = useState(false);
   const [helperUrl, setHelperUrl] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
+  const [showSourcePhoto, setShowSourcePhoto] = useState(false);
+
+  const [token] = useState<string>(() => {
+    if (routeToken) {
+      try {
+        sessionStorage.setItem('wearerkey_wearer_token', routeToken);
+      } catch {}
+      return routeToken;
+    }
+    try {
+      return sessionStorage.getItem('wearerkey_wearer_token') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  useEffect(() => {
+    if (routeToken && window.history.replaceState) {
+      window.history.replaceState(null, '', '/wearer');
+    }
+  }, [routeToken]);
+
+  // Handle ESC key for modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isRevokeModalOpen) {
+        setIsRevokeModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isRevokeModalOpen]);
 
   const {
     data: session,
@@ -33,13 +69,13 @@ export const WearerRoomPage: React.FC = () => {
     refetch,
   } = useQuery({
     queryKey: ['wearer-session', token],
-    queryFn: () => api.getWearerSession(token!),
+    queryFn: () => api.getWearerSession(token),
     enabled: !!token,
     refetchInterval: 3000,
   });
 
   const generateHelperLinkMutation = useMutation({
-    mutationFn: () => api.createHelperLink(token!),
+    mutationFn: () => api.createHelperLink(token),
     onSuccess: (data) => {
       setHelperUrl(data.helper_url);
       setActionError(null);
@@ -50,11 +86,13 @@ export const WearerRoomPage: React.FC = () => {
   });
 
   const revokeMutation = useMutation({
-    mutationFn: () => api.revokeSession(token!),
+    mutationFn: () => api.revokeSession(token),
     onSuccess: () => {
+      setIsRevokeModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['wearer-session', token] });
     },
     onError: (err: any) => {
+      setIsRevokeModalOpen(false);
       setActionError(err?.message || 'Failed to revoke session.');
     },
   });
@@ -130,17 +168,20 @@ export const WearerRoomPage: React.FC = () => {
             onClick={() => refetch()}
             className="p-2 rounded border border-stone bg-white hover:bg-stone-light/40 text-ink transition-colors"
             title="Refresh session"
+            aria-label="Refresh session"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {actionError && (
-        <div className="p-3 rounded bg-rust-light border border-rust text-rust text-xs font-medium">
-          {actionError}
-        </div>
-      )}
+      <div aria-live="polite">
+        {actionError && (
+          <div className="p-3 rounded bg-rust-light border border-rust text-rust text-xs font-medium">
+            {actionError}
+          </div>
+        )}
+      </div>
 
       {/* Visibility Rail */}
       <VisibilityRail currentStage="review" />
@@ -153,16 +194,41 @@ export const WearerRoomPage: React.FC = () => {
         expiresAt={session.expires_at}
         status={session.status}
         isWearer={true}
-        onRevoke={() => {
-          if (
-            window.confirm(
-              'Are you sure you want to revoke this pass? This will purge all active session data.'
-            )
-          ) {
-            revokeMutation.mutate();
-          }
-        }}
+        onRevoke={() => setIsRevokeModalOpen(true)}
       />
+
+      {/* Wearer Reference Photo Card (Private to Wearer) */}
+      {session.source_uploaded && (
+        <div className="parcel-card p-4 bg-white border border-stone">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-ink">
+              <User className="w-4 h-4 text-wearer" />
+              <span>Your Reference Photo (Private to this room)</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSourcePhoto(!showSourcePhoto)}
+              className="text-xs text-wearer hover:underline font-semibold"
+            >
+              {showSourcePhoto ? 'Hide Photo' : 'Inspect Photo'}
+            </button>
+          </div>
+          {showSourcePhoto && (
+            <div className="mt-3 pt-3 border-t border-stone-light flex flex-col sm:flex-row items-center gap-4">
+              <img
+                src={session.source_image_url || '/assets/sample_wearer_reference.png'}
+                alt="Wearer Reference"
+                className="w-32 h-44 object-cover rounded border border-stone"
+              />
+              <div className="text-xs text-ink-muted leading-relaxed">
+                <p className="font-semibold text-ink mb-1">Strict Isolation Notice</p>
+                This reference silhouette is stored in secure server memory and transmitted only to
+                YouCam AI Clothes V4. The helper receives <strong>no photo preview, no URL, and no capability</strong> to view this image.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Helper Share Box */}
       {session.status === 'ACTIVE' && (
@@ -336,6 +402,57 @@ export const WearerRoomPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Accessible Revocation Confirmation Modal */}
+      {isRevokeModalOpen && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="revoke-modal-title"
+          aria-describedby="revoke-modal-desc"
+          className="fixed inset-0 z-50 bg-ink/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div className="parcel-card max-w-md w-full bg-white border-2 border-rust p-6 space-y-4 shadow-xl">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2 text-rust">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <h3 id="revoke-modal-title" className="font-serif font-bold text-lg text-ink">
+                  Revoke Try-On Pass?
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRevokeModalOpen(false)}
+                className="text-ink-muted hover:text-ink p-1 rounded"
+                aria-label="Close dialog"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p id="revoke-modal-desc" className="text-xs text-ink-muted leading-relaxed">
+              Revoking will immediately cancel all pending provider tasks, purge your uploaded source
+              reference photo, and permanently disable the helper link. This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsRevokeModalOpen(false)}
+                className="px-4 py-2 border border-stone rounded text-xs font-semibold text-ink hover:bg-stone-light/40 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => revokeMutation.mutate()}
+                disabled={revokeMutation.isPending}
+                className="px-4 py-2 bg-rust hover:bg-rust-dark text-white rounded text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {revokeMutation.isPending ? 'Purging Session...' : 'Yes, Revoke and Purge'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

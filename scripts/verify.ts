@@ -18,10 +18,11 @@ function verifyAll() {
   const start = Date.now();
   console.log(`\n🔍 STARTING MASTER WEARERKEY VERIFICATION SUITE\n`);
 
-  runStep("Vitest Unit & Integration Tests", "pnpm test");
-  runStep("Web Frontend Production Build", "pnpm --filter @wearerkey/web build");
+  runStep("Vitest Unit & Integration Tests (Domain, API, YouCam Provider)", "pnpm test");
+  runStep("Full Monorepo Build (Contracts, Domain, API, Web)", "pnpm build");
+  runStep("Playwright E2E Journeys & Axe Accessibility (Desktop & Mobile)", "pnpm test:e2e");
   runStep("Security & Secrets Audit", "npx tsx scripts/security-scan.ts");
-  runStep("Honesty & Claims Validation", "npx tsx scripts/check-claims.ts");
+  runStep("Honesty, Terminology & Claims Validation", "npx tsx scripts/check-claims.ts");
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(2);
   console.log(`\n======================================================`);

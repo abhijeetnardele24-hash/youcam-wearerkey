@@ -24,7 +24,7 @@ export class RecordedReceiptProvider implements ClothesTryOnProvider {
   async uploadImage(image: SanitizedImage, _purpose: "source" | "garment"): Promise<ProviderFile> {
     return {
       fileId: `recorded_file_${image.contentHash.slice(0, 16)}`,
-      fileUrl: `/assets/recorded_upload.jpg`,
+      fileUrl: `/assets/sample_garment_overcoat.png`,
       contentHash: image.contentHash
     };
   }
@@ -52,5 +52,9 @@ export class RecordedReceiptProvider implements ClothesTryOnProvider {
       confirmed: true,
       providerStatus: "DELETED"
     };
+  }
+
+  async deleteFile(_fileId: string): Promise<boolean> {
+    return true;
   }
 }

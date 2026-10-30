@@ -147,6 +147,7 @@ export const WearerSessionDTOSchema = z.object({
   expires_at: z.string().datetime(),
   gift_mode: z.boolean(),
   source_uploaded: z.boolean(),
+  source_image_url: z.string().nullable().optional(),
   helper_link_minted: z.boolean(),
   created_at: z.string().datetime(),
   proposals: z.array(WearerProposalDTOSchema)

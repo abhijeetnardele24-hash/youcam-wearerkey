@@ -1,21 +1,23 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { request } from "undici";
 import sharp from "sharp";
+import { YouCamClothesProvider } from "../apps/api/src/providers/youcam/youcam-provider.js";
+import type { SanitizedImage } from "../apps/api/src/services/image-sanitizer.js";
 
 interface SmokeReceipt {
   evaluated_commit_sha: string;
-  provider_mode: "LIVE_YOUCAM" | "RECORDED_LIVE_RESULT" | "NOT_CONFIGURED_FIXTURE_MODE";
+  provider_mode: "LIVE_YOUCAM" | "DEMO_FIXTURE" | "RECORDED_LIVE_RESULT";
   endpoint: string;
   timestamp: string;
-  connectivity_status: "CONNECTED" | "AUTH_FAILED" | "OFFLINE";
+  connectivity_status: "CONNECTED" | "BLOCKED_MISSING_KEY" | "AUTH_FAILED" | "OFFLINE";
   http_status: number;
   live_execution_verified: boolean;
   model_name: string;
   latency_ms?: number;
   task_id?: string;
   deletion_status?: string;
+  reason?: string;
   error?: string;
 }
 
@@ -23,7 +25,7 @@ function getCommitSha(): string {
   try {
     return execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
   } catch {
-    return "UNKNOWN_COMMIT";
+    return process.env.GIT_COMMIT_SHA || "UNKNOWN_COMMIT";
   }
 }
 
@@ -43,167 +45,102 @@ async function runSmoke() {
   }
 
   if (!apiKey) {
-    console.log(`[WearerKey Live Smoke] YOUCAM_API_KEY is not set. Probing endpoint endpoint authentication...`);
-    try {
-      // Test connectivity to the real endpoint
-      const res = await request(`${baseUrl}/s2s/v2.0/task/cloth-v4`, {
-        method: "GET",
-        headers: {
-          "Accept": "application/json"
-        }
-      });
+    console.log(`[WearerKey Live Smoke] YOUCAM_API_KEY is not configured.`);
+    console.log(`  Operating in transparent deterministic fixture mode (DEMO_FIXTURE).`);
 
-      const bodyText = await res.body.text();
-      const latency = Date.now() - startTime;
+    const receipt: SmokeReceipt = {
+      evaluated_commit_sha: commitSha,
+      provider_mode: "DEMO_FIXTURE",
+      endpoint: baseUrl,
+      timestamp: new Date().toISOString(),
+      connectivity_status: "BLOCKED_MISSING_KEY",
+      http_status: 0,
+      live_execution_verified: false,
+      model_name: "YouCam AI Clothes V4",
+      reason: "YOUCAM_API_KEY not configured. System operating in deterministic DEMO_FIXTURE / RECORDED_LIVE_RESULT mode without fabricating live execution."
+    };
 
-      console.log(`  Endpoint reached: HTTP ${res.statusCode} (${latency}ms)`);
-      console.log(`  Response: ${bodyText.slice(0, 100)}...`);
-
-      const receipt: SmokeReceipt = {
-        evaluated_commit_sha: commitSha,
-        provider_mode: "NOT_CONFIGURED_FIXTURE_MODE",
-        endpoint: baseUrl,
-        timestamp: new Date().toISOString(),
-        connectivity_status: res.statusCode === 401 ? "CONNECTED" : "OFFLINE",
-        http_status: res.statusCode,
-        live_execution_verified: false,
-        model_name: "YouCam AI Clothes V4",
-        latency_ms: latency,
-        error: "YOUCAM_API_KEY not configured. System operating in deterministic DEMO_FIXTURE / RECORDED_LIVE_RESULT mode."
-      };
-
-      fs.writeFileSync(
-        path.join(docsDir, "live-youcam-receipt.json"),
-        JSON.stringify(receipt, null, 2)
-      );
-      console.log(`[WearerKey Live Smoke] Transparent fixture receipt written to docs/live-youcam-receipt.json`);
-      return;
-    } catch (err: any) {
-      console.error(`  Network error connecting to ${baseUrl}:`, err.message);
-      const receipt: SmokeReceipt = {
-        evaluated_commit_sha: commitSha,
-        provider_mode: "NOT_CONFIGURED_FIXTURE_MODE",
-        endpoint: baseUrl,
-        timestamp: new Date().toISOString(),
-        connectivity_status: "OFFLINE",
-        http_status: 0,
-        live_execution_verified: false,
-        model_name: "YouCam AI Clothes V4",
-        error: `Could not reach ${baseUrl}: ${err.message}`
-      };
-      fs.writeFileSync(
-        path.join(docsDir, "live-youcam-receipt.json"),
-        JSON.stringify(receipt, null, 2)
-      );
-      return;
-    }
+    fs.writeFileSync(
+      path.join(docsDir, "live-youcam-receipt.json"),
+      JSON.stringify(receipt, null, 2)
+    );
+    console.log(`[WearerKey Live Smoke] Truthful non-live receipt recorded in docs/live-youcam-receipt.json`);
+    return;
   }
 
-  // Live API key is provided! Let's execute live Clothes V4 try-on
-  console.log(`[WearerKey Live Smoke] YOUCAM_API_KEY detected. Executing live Clothes V4 try-on...`);
+  // Live API key is provided! Execute live Clothes V4 try-on
+  console.log(`[WearerKey Live Smoke] YOUCAM_API_KEY detected. Initializing YouCamClothesProvider...`);
 
   try {
-    // 1. Generate sanitized test reference & garment buffers
-    const sourceBuffer = await sharp({
+    const provider = new YouCamClothesProvider(baseUrl, apiKey);
+
+    // 1. Generate test reference & garment images
+    const sourceRaw = await sharp({
       create: {
         width: 512,
         height: 768,
         channels: 3,
         background: { r: 245, g: 240, b: 231 }
       }
-    }).jpeg().toBuffer();
+    }).png().toBuffer();
 
-    const garmentBuffer = await sharp({
+    const sourceImage: SanitizedImage = {
+      buffer: sourceRaw,
+      mimeType: "image/png",
+      width: 512,
+      height: 768,
+      byteSize: sourceRaw.length,
+      contentHash: "smoke_test_source_hash_12345"
+    };
+
+    const garmentRaw = await sharp({
       create: {
         width: 512,
         height: 512,
         channels: 3,
         background: { r: 112, g: 70, b: 94 }
       }
-    }).jpeg().toBuffer();
+    }).png().toBuffer();
 
-    // 2. Upload source to File API
-    const uploadSourceRes = await request(`${baseUrl}/s2s/v2.0/file`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "image/jpeg"
-      },
-      body: sourceBuffer
+    const garmentImage: SanitizedImage = {
+      buffer: garmentRaw,
+      mimeType: "image/png",
+      width: 512,
+      height: 512,
+      byteSize: garmentRaw.length,
+      contentHash: "smoke_test_garment_hash_67890"
+    };
+
+    // 2. Upload source via official presigned protocol
+    console.log(`  Uploading source reference image...`);
+    const sourceFile = await provider.uploadImage(sourceImage, "source");
+    console.log(`  Source uploaded: ${sourceFile.fileId}`);
+
+    // 3. Upload garment via official presigned protocol
+    console.log(`  Uploading garment image...`);
+    const garmentFile = await provider.uploadImage(garmentImage, "garment");
+    console.log(`  Garment uploaded: ${garmentFile.fileId}`);
+
+    // 4. Create Clothes V4 task
+    console.log(`  Creating Clothes V4 task...`);
+    const task = await provider.createTask({
+      srcFileId: sourceFile.fileId,
+      refFileId: garmentFile.fileId,
+      garmentCategory: "upper_body"
     });
+    console.log(`  Task created: ${task.taskId}`);
 
-    if (uploadSourceRes.statusCode !== 200) {
-      throw new Error(`Source File API upload failed with HTTP ${uploadSourceRes.statusCode}`);
-    }
-    const sourceData: any = await uploadSourceRes.body.json();
-    const sourceFileId = sourceData.file_id || sourceData.id;
-
-    // 3. Upload garment to File API
-    const uploadGarmentRes = await request(`${baseUrl}/s2s/v2.0/file`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "image/jpeg"
-      },
-      body: garmentBuffer
-    });
-
-    if (uploadGarmentRes.statusCode !== 200) {
-      throw new Error(`Garment File API upload failed with HTTP ${uploadGarmentRes.statusCode}`);
-    }
-    const garmentData: any = await uploadGarmentRes.body.json();
-    const garmentFileId = garmentData.file_id || garmentData.id;
-
-    // 4. Dispatch Clothes V4 Task
-    const taskRes = await request(`${baseUrl}/s2s/v2.0/task/cloth-v4`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        source_file_id: sourceFileId,
-        garment_file_id: garmentFileId,
-        garment_category: "upper_body"
-      })
-    });
-
-    const taskData: any = await taskRes.body.json();
-    const taskId = taskData.task_id || taskData.id;
-    console.log(`  Task created: ${taskId}`);
-
-    // 5. Poll for completion (up to 30s)
-    let finalStatus = "PROCESSING";
-    let attempts = 0;
-    while (attempts < 15) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const pollRes = await request(`${baseUrl}/s2s/v2.0/task/cloth-v4/${taskId}`, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`
-        }
-      });
-      const pollData: any = await pollRes.body.json();
-      finalStatus = pollData.status || pollData.state;
-      if (finalStatus === "SUCCEEDED" || finalStatus === "SUCCESS" || finalStatus === "FAILED") {
-        break;
-      }
-      attempts++;
-    }
-
+    // 5. Poll for completion
+    console.log(`  Polling task status...`);
+    const status = await provider.pollTask(task.taskId, 45000);
     const latency = Date.now() - startTime;
-    console.log(`  Task finished with status: ${finalStatus} (${latency}ms)`);
+    console.log(`  Task completed with status: ${status.status} (${latency}ms)`);
 
-    // Clean up files
-    await request(`${baseUrl}/s2s/v2.0/file/${sourceFileId}`, {
-      method: "DELETE",
-      headers: { "Authorization": `Bearer ${apiKey}` }
-    }).catch(() => {});
-
-    await request(`${baseUrl}/s2s/v2.0/file/${garmentFileId}`, {
-      method: "DELETE",
-      headers: { "Authorization": `Bearer ${apiKey}` }
-    }).catch(() => {});
+    // 6. Delete remote task and files
+    console.log(`  Purging remote task and files...`);
+    await provider.deleteTask(task.taskId);
+    await provider.deleteFile(sourceFile.fileId);
+    await provider.deleteFile(garmentFile.fileId);
 
     const receipt: SmokeReceipt = {
       evaluated_commit_sha: commitSha,
@@ -212,18 +149,19 @@ async function runSmoke() {
       timestamp: new Date().toISOString(),
       connectivity_status: "CONNECTED",
       http_status: 200,
-      live_execution_verified: true,
+      live_execution_verified: status.status === "SUCCEEDED",
       model_name: "YouCam AI Clothes V4",
       latency_ms: latency,
-      task_id: taskId,
-      deletion_status: "REMOTE_FILES_PURGED"
+      task_id: task.taskId,
+      deletion_status: "PURGED",
+      reason: status.status === "SUCCEEDED" ? "Live YouCam Clothes V4 verified end-to-end" : status.errorMessage
     };
 
     fs.writeFileSync(
       path.join(docsDir, "live-youcam-receipt.json"),
       JSON.stringify(receipt, null, 2)
     );
-    console.log(`[WearerKey Live Smoke] Genuine live receipt recorded in docs/live-youcam-receipt.json`);
+    console.log(`[WearerKey Live Smoke] Live receipt recorded in docs/live-youcam-receipt.json`);
   } catch (err: any) {
     console.error(`[WearerKey Live Smoke] Live execution failed:`, err.message);
     const receipt: SmokeReceipt = {

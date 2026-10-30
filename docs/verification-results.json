@@ -1,0 +1,49 @@
+{
+  "evaluated_commit_sha": "775802c4af2bd119dd47014803985436e5aa9391",
+  "timestamp": "2026-10-30T18:11:18.582Z",
+  "status": "PASSED",
+  "claims_verified": true,
+  "tests": {
+    "vitest_unit_and_integration": {
+      "total": 36,
+      "passed": 36,
+      "failed": 0,
+      "suites": [
+        "domain.test.ts",
+        "api.test.ts",
+        "youcam-provider.test.ts"
+      ]
+    },
+    "playwright_e2e_and_axe": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "viewports": [
+        "Desktop Chrome",
+        "Mobile Viewport (390px)"
+      ]
+    }
+  },
+  "accessibility": {
+    "axe_violations": 0,
+    "standard": "WCAG 2.1 AA",
+    "tested_views": [
+      "Home Page",
+      "Create Pass Page",
+      "Judge Tour Page"
+    ]
+  },
+  "security": {
+    "secret_violations": 0,
+    "constant_time_token_verification": true,
+    "server_enforced_privacy_boundary": true,
+    "in_memory_sanitization_and_exif_strip": true,
+    "helper_leakage_prevented": true
+  },
+  "provider": {
+    "mode": "DEMO_FIXTURE",
+    "live_execution_verified": false,
+    "api_family": "YouCam AI Clothes V4 (/s2s/v2.0/task/cloth-v4)",
+    "truthful_fixture_separation": true
+  }
+}

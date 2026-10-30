@@ -15,6 +15,7 @@ export class FakeYouCamProvider implements ClothesTryOnProvider {
   private files = new Map<string, ProviderFile>();
   private tasks = new Map<string, ProviderTaskStatus>();
   private deletedTasks = new Set<string>();
+  private deletedFiles = new Set<string>();
 
   constructor(
     private readonly defaultDelayMs = 50,
@@ -50,7 +51,7 @@ export class FakeYouCamProvider implements ClothesTryOnProvider {
       this.tasks.set(taskId, {
         taskId,
         status: "SUCCEEDED",
-        resultUrl: `https://fake.youcam.local/results/${taskId}.jpg`,
+        resultUrl: "/assets/sample_vto_result.png",
         observedUnits: 2
       });
     }
@@ -86,5 +87,11 @@ export class FakeYouCamProvider implements ClothesTryOnProvider {
       confirmed: true,
       providerStatus: "DELETED"
     };
+  }
+
+  async deleteFile(fileId: string): Promise<boolean> {
+    this.deletedFiles.add(fileId);
+    this.files.delete(fileId);
+    return true;
   }
 }

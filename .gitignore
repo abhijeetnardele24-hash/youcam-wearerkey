@@ -16,6 +16,7 @@ dist/
 build/
 .vite/
 apps/web/dist/
+*.tsbuildinfo
 
 # Testing and coverage
 coverage/

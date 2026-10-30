@@ -35,7 +35,7 @@
       <text x="85" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#15201D">YouCam Clothes V4</text>
 
       <rect x="185" y="0" width="190" height="34" rx="6" fill="#FFFFFF" stroke="#C8BFAF"/>
-      <text x="280" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#15201D">Zero-Knowledge Helper</text>
+      <text x="280" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#15201D">Role-Separated Helper</text>
 
       <rect x="390" y="0" width="170" height="34" rx="6" fill="#FFFFFF" stroke="#C8BFAF"/>
       <text x="475" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#15201D">Signed Deletion Receipt</text>

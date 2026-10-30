@@ -1,5 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import { eq } from "drizzle-orm";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { SubmitDecisionRequestSchema } from "@wearerkey/contracts";
 import { decryptProviderIdentifier } from "@wearerkey/domain";
 import { config } from "../config.js";
@@ -7,7 +10,12 @@ import { getDb } from "../db/index.js";
 import { relaySessions, proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
 import { requireRole } from "../middleware/auth.js";
 import { eventBus } from "../services/event-bus.js";
+import { ephemeralImageStore } from "../services/garment-store.js";
 import { request } from "undici";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const publicDir = path.resolve(__dirname, "../../public");
 
 export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
   // 1. Wearer Room Dashboard State
@@ -74,6 +82,7 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
         expires_at: s.expiresAt.toISOString(),
         gift_mode: s.giftMode,
         source_uploaded: !!s.sourceContentHash,
+        source_image_url: s.sourceContentHash ? "/api/wearer/session/source" : null,
         helper_link_minted: true,
         created_at: s.createdAt.toISOString(),
         proposals: proposalDTOs
@@ -81,7 +90,63 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // 2. Private Result Image Stream Proxy (Wearer Only)
+  // 2. Wearer Source Photo Stream (Wearer Only - Private)
+  fastify.get(
+    "/api/wearer/session/source",
+    { preHandler: [requireRole("wearer")] },
+    async (req, reply) => {
+      const auth = req.authSession!;
+      const stored = ephemeralImageStore.getSource(auth.sessionId);
+      if (stored) {
+        reply.header("Content-Type", stored.mimeType);
+        reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+        return reply.send(stored.buffer);
+      }
+      const fallbackPath = path.resolve(publicDir, "sample_wearer_reference.png");
+      if (fs.existsSync(fallbackPath)) {
+        reply.header("Content-Type", "image/png");
+        reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+        return reply.send(fs.readFileSync(fallbackPath));
+      }
+      return reply.status(404).send({ error: "NOT_FOUND", message: "Source image not found" });
+    }
+  );
+
+  // 3. Garment Preview Stream (Wearer Only)
+  fastify.get(
+    "/api/wearer/proposals/:id/garment",
+    { preHandler: [requireRole("wearer")] },
+    async (req, reply) => {
+      const auth = req.authSession!;
+      const { id } = req.params as { id: string };
+      const db = await getDb();
+      const pRows = await db
+        .select()
+        .from(proposals)
+        .where(eq(proposals.id, id))
+        .limit(1);
+
+      if (!pRows[0] || pRows[0].sessionId !== auth.sessionId) {
+        return reply.status(404).send({ error: "NOT_FOUND", message: "Proposal not found" });
+      }
+
+      const stored = ephemeralImageStore.getGarment(id);
+      if (stored) {
+        reply.header("Content-Type", stored.mimeType);
+        reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+        return reply.send(stored.buffer);
+      }
+      const fallbackPath = path.resolve(publicDir, "sample_garment_overcoat.png");
+      if (fs.existsSync(fallbackPath)) {
+        reply.header("Content-Type", "image/png");
+        reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+        return reply.send(fs.readFileSync(fallbackPath));
+      }
+      return reply.status(404).send({ error: "NOT_FOUND", message: "Garment image not found" });
+    }
+  );
+
+  // 4. Private Result Image Stream Proxy (Wearer Only)
   fastify.get(
     "/api/wearer/proposals/:id/result",
     { preHandler: [requireRole("wearer")] },
@@ -112,21 +177,50 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const rawResultUrl = decryptProviderIdentifier(task.resultUrlCiphertext, config.ENCRYPTION_KEY_HEX);
+      const fallbackPath = path.resolve(publicDir, "sample_vto_result.png");
 
-      // If it's a relative URL or local asset
-      if (rawResultUrl.startsWith("/")) {
-        return reply.redirect(rawResultUrl);
+      // If it's a relative URL, local asset, or fake mock URL
+      if (
+        rawResultUrl.startsWith("/") ||
+        rawResultUrl.includes("fake.youcam.local") ||
+        rawResultUrl.includes("sample_vto_result")
+      ) {
+        if (fs.existsSync(fallbackPath)) {
+          reply.header("Content-Type", "image/png");
+          reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+          return reply.send(fs.readFileSync(fallbackPath));
+        }
+        return reply.redirect(rawResultUrl.startsWith("/") ? rawResultUrl : "/assets/sample_vto_result.png");
       }
 
       // Stream from YouCam CDN directly to wearer browser
-      const streamRes = await request(rawResultUrl, { method: "GET" });
-      reply.header("Content-Type", streamRes.headers["content-type"] || "image/jpeg");
-      reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
-      return reply.send(streamRes.body);
+      try {
+        const streamRes = await request(rawResultUrl, { method: "GET" });
+        if (streamRes.statusCode >= 200 && streamRes.statusCode < 300) {
+          reply.header("Content-Type", streamRes.headers["content-type"] || "image/jpeg");
+          reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+          return reply.send(streamRes.body);
+        }
+        // Non-200 from remote CDN -> fallback to sample
+        if (fs.existsSync(fallbackPath)) {
+          reply.header("Content-Type", "image/png");
+          reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+          return reply.send(fs.readFileSync(fallbackPath));
+        }
+        return reply.status(streamRes.statusCode).send({ error: "UPSTREAM_CDN_ERROR" });
+      } catch (err) {
+        req.log.warn({ err }, "Failed to fetch remote result, falling back to local asset");
+        if (fs.existsSync(fallbackPath)) {
+          reply.header("Content-Type", "image/png");
+          reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+          return reply.send(fs.readFileSync(fallbackPath));
+        }
+        return reply.status(502).send({ error: "REMOTE_FETCH_FAILED" });
+      }
     }
   );
 
-  // 3. Wearer Records Decision (Approve / Maybe / Pass)
+  // 5. Wearer Records Decision (Approve / Maybe / Pass)
   fastify.post(
     "/api/wearer/proposals/:id/decision",
     { preHandler: [requireRole("wearer")] },
@@ -206,7 +300,7 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // 4. Wearer Scoped Privacy & Deletion Receipt
+  // 6. Wearer Scoped Privacy & Deletion Receipt
   fastify.get(
     "/api/wearer/receipt",
     { preHandler: [requireRole("wearer")] },

@@ -42,7 +42,7 @@ export const JudgeTourPage: React.FC = () => {
         </h1>
         <p className="text-xs sm:text-sm text-ink-muted leading-relaxed">
           Experience both sides of the collaborative shopping protocol side-by-side. Inspect the
-          server-enforced zero-knowledge boundary in real time.
+          server-enforced privacy boundary in real time.
         </p>
       </div>
 
@@ -68,7 +68,7 @@ export const JudgeTourPage: React.FC = () => {
             type="button"
             onClick={handleLaunchTour}
             disabled={isSeeding}
-            className="px-6 py-3 bg-helper hover:bg-helper-dark text-white rounded font-semibold text-sm transition-all shadow-sm flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
+            className="px-6 py-3 bg-helper hover:bg-helper-dark text-white rounded font-semibold text-sm transition-colors shadow-sm flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
           >
             {isSeeding ? (
               <span>Seeding Demo State...</span>
@@ -94,9 +94,13 @@ export const JudgeTourPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="flex bg-parchment-200 rounded p-0.5 text-xs font-semibold">
+              <div role="tablist" aria-label="Tour inspection view mode" className="flex bg-parchment-200 rounded p-0.5 text-xs font-semibold">
                 <button
                   type="button"
+                  role="tab"
+                  id="tab-split"
+                  aria-selected={activeTab === 'split'}
+                  aria-controls="panel-split"
                   onClick={() => setActiveTab('split')}
                   className={`px-3 py-1 rounded transition-colors ${
                     activeTab === 'split' ? 'bg-white text-ink shadow-sm' : 'text-ink-muted hover:text-ink'
@@ -106,6 +110,10 @@ export const JudgeTourPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  id="tab-wearer"
+                  aria-selected={activeTab === 'wearer'}
+                  aria-controls="panel-wearer"
                   onClick={() => setActiveTab('wearer')}
                   className={`px-3 py-1 rounded transition-colors ${
                     activeTab === 'wearer'
@@ -117,6 +125,10 @@ export const JudgeTourPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  id="tab-helper"
+                  aria-selected={activeTab === 'helper'}
+                  aria-controls="panel-helper"
                   onClick={() => setActiveTab('helper')}
                   className={`px-3 py-1 rounded transition-colors ${
                     activeTab === 'helper'
@@ -140,7 +152,7 @@ export const JudgeTourPage: React.FC = () => {
 
           {/* Interactive Split-Screen Frame */}
           {activeTab === 'split' ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div id="panel-split" role="tabpanel" aria-labelledby="tab-split" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Left Column: Wearer */}
               <div className="parcel-border rounded-lg bg-white overflow-hidden shadow-sm flex flex-col h-[750px]">
                 <div className="bg-wearer text-white px-4 py-2 flex items-center justify-between text-xs font-semibold">
@@ -190,7 +202,7 @@ export const JudgeTourPage: React.FC = () => {
               </div>
             </div>
           ) : activeTab === 'wearer' ? (
-            <div className="parcel-border rounded-lg bg-white overflow-hidden shadow-sm h-[750px]">
+            <div id="panel-wearer" role="tabpanel" aria-labelledby="tab-wearer" className="parcel-border rounded-lg bg-white overflow-hidden shadow-sm h-[750px]">
               <iframe
                 src={seedData.wearerUrl}
                 title="Wearer Room"
@@ -198,7 +210,7 @@ export const JudgeTourPage: React.FC = () => {
               />
             </div>
           ) : (
-            <div className="parcel-border rounded-lg bg-white overflow-hidden shadow-sm h-[750px]">
+            <div id="panel-helper" role="tabpanel" aria-labelledby="tab-helper" className="parcel-border rounded-lg bg-white overflow-hidden shadow-sm h-[750px]">
               <iframe
                 src={seedData.helperUrl}
                 title="Helper Room"

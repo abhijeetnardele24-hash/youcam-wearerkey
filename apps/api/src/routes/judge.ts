@@ -1,4 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   generateCapabilityToken,
   hashCapabilityToken,
@@ -7,6 +10,11 @@ import {
 import { config } from "../config.js";
 import { getDb } from "../db/index.js";
 import { relaySessions, proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
+import { ephemeralImageStore } from "../services/garment-store.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const publicDir = path.resolve(__dirname, "../../public");
 
 export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post("/api/judge/seed", async (_req, reply) => {
@@ -57,11 +65,23 @@ export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
 
     const prop = insertedProposal[0];
 
-    // 3. Seed Provider Task with Recorded Result
+    // Store in ephemeral memory store if public sample files exist
+    const sourceSample = path.join(publicDir, "sample_wearer_reference.png");
+    if (fs.existsSync(sourceSample)) {
+      ephemeralImageStore.saveSource(session.id, fs.readFileSync(sourceSample), "image/png");
+    }
+    const garmentSample = path.join(publicDir, "sample_garment_overcoat.png");
+    if (fs.existsSync(garmentSample)) {
+      ephemeralImageStore.saveGarment(prop.id, fs.readFileSync(garmentSample), "image/png");
+    }
+
+    const providerMode = "RECORDED_LIVE_RESULT";
+
+    // 3. Seed Provider Task with Recorded / Fixture Result
     await db.insert(providerTasks).values({
       proposalId: prop.id,
       provider: "YOUCAM",
-      mode: "RECORDED_LIVE_RESULT",
+      mode: providerMode,
       apiFamily: "AI_CLOTHES_V4",
       taskIdCiphertext: encryptProviderIdentifier("recorded_judge_task_v4_success", config.ENCRYPTION_KEY_HEX),
       resultUrlCiphertext: encryptProviderIdentifier("/assets/sample_vto_result.png", config.ENCRYPTION_KEY_HEX),
@@ -95,8 +115,8 @@ export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
       wearer_url: `/wearer/${wearerToken}`,
       helper_url: `/helper/${helperToken}`,
       status: "ACTIVE",
-      mode: "RECORDED_LIVE_RESULT",
-      message: "Judge sample session seeded successfully with verified recorded V4 result."
+      mode: providerMode,
+      message: "Judge sample session seeded successfully with verified deterministic V4 result."
     });
   });
 };

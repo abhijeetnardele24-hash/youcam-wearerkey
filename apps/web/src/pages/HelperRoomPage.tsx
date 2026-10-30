@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
@@ -21,8 +21,28 @@ import {
 } from 'lucide-react';
 
 export const HelperRoomPage: React.FC = () => {
-  const { token } = useParams<{ token: string }>();
+  const { token: routeToken } = useParams<{ token: string }>();
   const queryClient = useQueryClient();
+
+  const [token] = useState<string>(() => {
+    if (routeToken) {
+      try {
+        sessionStorage.setItem('wearerkey_helper_token', routeToken);
+      } catch {}
+      return routeToken;
+    }
+    try {
+      return sessionStorage.getItem('wearerkey_helper_token') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  useEffect(() => {
+    if (routeToken && window.history.replaceState) {
+      window.history.replaceState(null, '', '/helper');
+    }
+  }, [routeToken]);
 
   // Form states
   const [label, setLabel] = useState('');
@@ -219,17 +239,18 @@ export const HelperRoomPage: React.FC = () => {
             onClick={() => refetch()}
             className="p-2 rounded border border-stone bg-white hover:bg-stone-light/40 text-ink transition-colors"
             title="Refresh session"
+            aria-label="Refresh session"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Strict Zero-Knowledge Privacy Notice */}
+      {/* Strict Role-Separated Privacy Notice */}
       <div className="parcel-card p-4 bg-helper-light/40 border-2 border-helper-border/40 flex items-start gap-3">
         <ShieldCheck className="w-5 h-5 text-helper flex-shrink-0 mt-0.5" />
         <div className="text-xs text-ink-muted">
-          <strong className="text-ink">Zero-Knowledge Guarantee:</strong> As a helper, you have no
+          <strong className="text-ink">Server-Enforced Privacy Boundary:</strong> As a helper, you have no
           access to the wearer's reference photo or virtual try-on render. When you click "Request
           Try-On", YouCam AI Clothes V4 renders the outfit directly to the wearer's private mirror.
           You will receive only their verdict (Approve / Maybe / Pass) and safe feedback note.

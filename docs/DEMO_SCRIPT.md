@@ -21,7 +21,7 @@ A structured, conversational walkthrough for recording the hackathon demo video.
 
 ---
 
-### [0:55 - 1:25] Role B: The Zero-Knowledge Helper Experience
+### [0:55 - 1:25] Role B: The Role-Separated Helper Experience
 - **Visual:** Open the Helper Link (`/helper/:token`) in an incognito window or split view.
 - **Narration:**
   > "Now I send this helper link to my friend or stylist. Look at their screen:

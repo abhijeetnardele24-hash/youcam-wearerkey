@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import {
   generateCapabilityToken,
   hashCapabilityToken,
-  encryptProviderIdentifier
+  encryptProviderIdentifier,
+  decryptProviderIdentifier
 } from "@wearerkey/domain";
 import { CreateSessionRequestSchema } from "@wearerkey/contracts";
 import { config } from "../config.js";
@@ -13,6 +14,7 @@ import { requireRole } from "../middleware/auth.js";
 import { sanitizeAndValidateImage } from "../services/image-sanitizer.js";
 import { getProvider } from "../providers/youcam/index.js";
 import { eventBus } from "../services/event-bus.js";
+import { ephemeralImageStore } from "../services/garment-store.js";
 
 export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
   // 1. Create a Try-On Pass (Public)
@@ -98,6 +100,9 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
           message: err.message
         });
       }
+
+      // Store in ephemeral memory store for private preview by wearer only
+      ephemeralImageStore.saveSource(auth.sessionId, sanitized.buffer, sanitized.mimeType);
 
       const provider = getProvider();
       let uploadedFile;
@@ -195,6 +200,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
 
       let deletedCount = 0;
       let totalTasks = 0;
+      const proposalIds = sessionProposals.map((p) => p.id);
 
       for (const prop of sessionProposals) {
         const tasks = await db
@@ -206,8 +212,8 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
         for (const t of tasks) {
           if (t.taskIdCiphertext) {
             try {
-              // Delete from YouCam
-              const res = await provider.deleteTask(t.id);
+              const remoteTaskId = decryptProviderIdentifier(t.taskIdCiphertext, config.ENCRYPTION_KEY_HEX);
+              const res = await provider.deleteTask(remoteTaskId);
               if (res.confirmed) {
                 deletedCount++;
               }
@@ -216,7 +222,30 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
             }
           }
         }
+
+        // Delete remote garment file if stored
+        if (prop.garmentFileIdCiphertext) {
+          try {
+            const remoteGarmentId = decryptProviderIdentifier(prop.garmentFileIdCiphertext, config.ENCRYPTION_KEY_HEX);
+            await provider.deleteFile(remoteGarmentId);
+          } catch (err) {
+            req.log.warn({ err, proposalId: prop.id }, "Provider garment file deletion error");
+          }
+        }
       }
+
+      // Delete remote source file if stored
+      if (auth.session.sourceFileIdCiphertext) {
+        try {
+          const remoteSourceId = decryptProviderIdentifier(auth.session.sourceFileIdCiphertext, config.ENCRYPTION_KEY_HEX);
+          await provider.deleteFile(remoteSourceId);
+        } catch (err) {
+          req.log.warn({ err, sessionId: auth.sessionId }, "Provider source file deletion error");
+        }
+      }
+
+      // Purge all ephemeral in-memory preview buffers
+      ephemeralImageStore.purgeSession(auth.sessionId, proposalIds);
 
       const revokedAt = new Date();
       await db
@@ -224,6 +253,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
         .set({
           status: "REVOKED",
           revokedAt,
+          purgedAt: revokedAt,
           updatedAt: revokedAt
         })
         .where(eq(relaySessions.id, auth.sessionId));
@@ -248,6 +278,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         status: "REVOKED",
         revoked_at: revokedAt.toISOString(),
+        purged_at: revokedAt.toISOString(),
         tasks_purged: deletedCount,
         tasks_total: totalTasks
       });

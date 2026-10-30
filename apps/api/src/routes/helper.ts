@@ -1,12 +1,16 @@
 import type { FastifyPluginAsync } from "fastify";
-import { eq } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   evaluateConsentGate,
   generateProposalFingerprint,
   encryptProviderIdentifier,
+  decryptProviderIdentifier,
   mapYouCamError
 } from "@wearerkey/domain";
-import { SubmitProposalRequestSchema, GarmentCategorySchema } from "@wearerkey/contracts";
+import { SubmitProposalRequestSchema } from "@wearerkey/contracts";
 import { config } from "../config.js";
 import { getDb } from "../db/index.js";
 import { relaySessions, proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
@@ -14,6 +18,10 @@ import { requireRole } from "../middleware/auth.js";
 import { sanitizeAndValidateImage } from "../services/image-sanitizer.js";
 import { getProvider } from "../providers/youcam/index.js";
 import { eventBus } from "../services/event-bus.js";
+import { ephemeralImageStore } from "../services/garment-store.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const helperRoutes: FastifyPluginAsync = async (fastify) => {
   // 1. Helper Room View (ZERO Wearer or Result Images!)
@@ -53,7 +61,7 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
           failure_message_safe: p.failureMessageSafe,
           created_at: p.createdAt.toISOString(),
           completed_at: p.completedAt ? p.completedAt.toISOString() : null
-          // CRITICAL PRIVACY BOUNDARY: Result image and wearer photo are never included here!
+          // CRITICAL PRIVACY BOUNDARY: Result image and wearer photo are NEVER included here!
         });
       }
 
@@ -73,7 +81,44 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // 2. Helper Proposes a Garment (Multipart upload)
+  // 2. Helper Fetches Garment Thumbnail
+  fastify.get(
+    "/api/helper/proposals/:id/garment",
+    { preHandler: [requireRole("helper")] },
+    async (req, reply) => {
+      const auth = req.authSession!;
+      const { id } = req.params as { id: string };
+      const db = await getDb();
+
+      const pRows = await db
+        .select()
+        .from(proposals)
+        .where(and(eq(proposals.id, id), eq(proposals.sessionId, auth.sessionId)))
+        .limit(1);
+
+      if (!pRows[0]) {
+        return reply.status(404).send({ error: "NOT_FOUND", message: "Proposal not found" });
+      }
+
+      const stored = ephemeralImageStore.getGarment(id);
+      if (stored) {
+        reply.type(stored.mimeType);
+        reply.header("Cache-Control", "private, max-age=3600");
+        return reply.send(stored.buffer);
+      }
+
+      // Fallback to sample asset
+      const samplePath = path.resolve(__dirname, "../../public/sample_garment_overcoat.png");
+      if (fs.existsSync(samplePath)) {
+        reply.type("image/png");
+        return reply.send(fs.readFileSync(samplePath));
+      }
+
+      return reply.status(404).send({ error: "NOT_FOUND", message: "Garment preview unavailable" });
+    }
+  );
+
+  // 3. Helper Proposes a Garment (Multipart upload)
   fastify.post(
     "/api/helper/proposals",
     { preHandler: [requireRole("helper")] },
@@ -169,6 +214,9 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
 
       const prop = inserted[0];
 
+      // Save in ephemeral garment store for UI preview
+      ephemeralImageStore.saveGarment(prop.id, sanitized.buffer, sanitized.mimeType);
+
       await db.insert(auditEvents).values({
         sessionId: auth.sessionId,
         actorRole: "helper",
@@ -184,15 +232,14 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.status(201).send({
+        success: true,
         proposal_id: prop.id,
-        status: prop.status,
-        label: prop.label,
-        category: prop.garmentCategory
+        status: prop.status
       });
     }
   );
 
-  // 3. Request Try-On Generation (Atomic Consent Gate & Provider Orchestration)
+  // 4. Helper Requests Virtual Try-On Generation
   fastify.post(
     "/api/helper/proposals/:id/generate",
     { preHandler: [requireRole("helper")] },
@@ -212,11 +259,31 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: "NOT_FOUND", message: "Proposal not found" });
       }
 
-      // Query current proposal count
+      // Check for concurrent duplicate proposal fingerprint in database
+      let duplicateFingerprintExists = false;
+      if (prop.idempotencyFingerprint) {
+        const existingDuplicates = await db
+          .select()
+          .from(proposals)
+          .where(
+            and(
+              eq(proposals.sessionId, auth.sessionId),
+              eq(proposals.idempotencyFingerprint, prop.idempotencyFingerprint),
+              ne(proposals.id, id),
+              eq(proposals.status, "SUCCEEDED")
+            )
+          )
+          .limit(1);
+        duplicateFingerprintExists = existingDuplicates.length > 0;
+      }
+
+      // Query active proposals for budget check
       const allProps = await db
         .select()
         .from(proposals)
         .where(eq(proposals.sessionId, auth.sessionId));
+
+      const activeSuccessCount = allProps.filter((p) => p.status === "SUCCEEDED" || p.status === "PROCESSING").length;
 
       // Atomic Consent Gate Verification
       const gateResult = evaluateConsentGate({
@@ -225,10 +292,10 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
         allowedCategories: auth.session.allowedCategories as any,
         garmentCategory: prop.garmentCategory as any,
         maxProposals: auth.session.maxProposals,
-        currentProposalCount: allProps.filter((p) => p.status === "SUCCEEDED" || p.status === "PROCESSING").length,
+        currentProposalCount: activeSuccessCount,
         hasSourceImage: !!auth.session.sourceContentHash,
         hasGarmentImage: !!prop.garmentContentHash,
-        duplicateFingerprintExists: false
+        duplicateFingerprintExists
       });
 
       if (!gateResult.allowed) {
@@ -244,7 +311,7 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      // Update proposal state to UPLOADING -> SUBMITTED
+      // Update proposal state to PROCESSING
       await db
         .update(proposals)
         .set({ status: "PROCESSING" })
@@ -259,13 +326,23 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
 
       const provider = getProvider();
 
+      // Decrypt genuine remote file IDs
+      const srcFileId = auth.session.sourceFileIdCiphertext
+        ? decryptProviderIdentifier(auth.session.sourceFileIdCiphertext, config.ENCRYPTION_KEY_HEX)
+        : "src_file_ready";
+
+      const refFileId = prop.garmentFileIdCiphertext
+        ? decryptProviderIdentifier(prop.garmentFileIdCiphertext, config.ENCRYPTION_KEY_HEX)
+        : "ref_file_ready";
+
       // Trigger asynchronous task
       try {
         const task = await provider.createTask({
-          srcFileId: "src_ready",
-          refFileId: "garment_ready",
+          srcFileId,
+          refFileId,
           garmentCategory: prop.garmentCategory as any,
-          filterMultiPerson: "strict"
+          filterMultiPerson: "strict",
+          idempotencyKey: (req.headers["idempotency-key"] as string) || undefined
         });
 
         // Record provider task
@@ -365,7 +442,7 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // 4. Helper Redacted Receipt
+  // 5. Helper Redacted Receipt
   fastify.get(
     "/api/helper/receipt",
     { preHandler: [requireRole("helper")] },

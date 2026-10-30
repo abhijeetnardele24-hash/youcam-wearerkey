@@ -62,7 +62,7 @@ export const DecisionSlip: React.FC<DecisionSlipProps> = ({
               type="button"
               disabled={disabled || isSubmitting}
               onClick={() => setSelectedDecision('APPROVE')}
-              className={`p-3 rounded border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-semibold ${
+              className={`p-3 rounded border flex flex-col items-center justify-center gap-1.5 transition-colors text-xs font-semibold ${
                 selectedDecision === 'APPROVE'
                   ? 'bg-success text-white border-success-dark shadow-sm scale-[1.02]'
                   : 'bg-white text-ink border-stone hover:bg-success-light/30'
@@ -85,7 +85,7 @@ export const DecisionSlip: React.FC<DecisionSlipProps> = ({
               type="button"
               disabled={disabled || isSubmitting}
               onClick={() => setSelectedDecision('MAYBE')}
-              className={`p-3 rounded border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-semibold ${
+              className={`p-3 rounded border flex flex-col items-center justify-center gap-1.5 transition-colors text-xs font-semibold ${
                 selectedDecision === 'MAYBE'
                   ? 'bg-amber-700 text-white border-amber-800 shadow-sm scale-[1.02]'
                   : 'bg-white text-ink border-stone hover:bg-amber-50'
@@ -108,7 +108,7 @@ export const DecisionSlip: React.FC<DecisionSlipProps> = ({
               type="button"
               disabled={disabled || isSubmitting}
               onClick={() => setSelectedDecision('PASS')}
-              className={`p-3 rounded border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-semibold ${
+              className={`p-3 rounded border flex flex-col items-center justify-center gap-1.5 transition-colors text-xs font-semibold ${
                 selectedDecision === 'PASS'
                   ? 'bg-rust text-white border-rust-dark shadow-sm scale-[1.02]'
                   : 'bg-white text-ink border-stone hover:bg-rust-light/30'
