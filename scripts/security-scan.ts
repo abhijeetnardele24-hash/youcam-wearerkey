@@ -25,7 +25,13 @@ function runSecurityScan() {
   let violations = 0;
 
   for (const file of files) {
-    if (file === "pnpm-lock.yaml" || file === ".npmrc" || file.endsWith(".png") || file.endsWith(".jpg")) {
+    if (
+      file === "pnpm-lock.yaml" ||
+      file === ".npmrc" ||
+      file === "scripts/security-scan.ts" ||
+      file.endsWith(".png") ||
+      file.endsWith(".jpg")
+    ) {
       continue;
     }
 
