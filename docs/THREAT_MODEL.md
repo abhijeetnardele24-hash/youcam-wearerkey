@@ -119,3 +119,4 @@ WearerKey is an evidence-first, role-separated privacy relay protocol designed t
 1. **Not End-to-End Homomorphic Encryption:** WearerKey does not perform homomorphic computation. The wearer's image is held in volatile memory on the WearerKey server and transmitted via TLS to Perfect Corp's YouCam API to perform the neural garment drape. WearerKey minimizes this risk through ephemeral in-memory storage, immediate post-try-on remote purge, and strict role segregation.
 2. **Physical Shoulder Surfing:** If the wearer physically shows their phone or laptop screen to the shopping companion in person, software boundaries cannot prevent visual observation.
 3. **Upstream Provider Trust:** WearerKey relies on Perfect Corp's server-to-server API to faithfully delete files and tasks upon receiving the official deletion requests (`DELETE /s2s/v2.0/file/{fileId}` and `POST /s2s/v2.0/task/delete`).
+

@@ -3,15 +3,23 @@ import { eq } from "drizzle-orm";
 import {
   generateCapabilityToken,
   hashCapabilityToken,
+  generateBootstrapCode,
+  hashBootstrapCode,
+  generatePurgeRecoveryToken,
+  hashPurgeRecoveryToken,
   encryptProviderIdentifier,
   decryptProviderIdentifier,
   signReceiptPayload
 } from "@wearerkey/domain";
-import { CreateSessionRequestSchema, type DeletionStatus } from "@wearerkey/contracts";
+import {
+  CreateSessionRequestSchema,
+  type DeletionStatus,
+  type StructuredDeletionError
+} from "@wearerkey/contracts";
 import { config } from "../config.js";
 import { getDb } from "../db/index.js";
 import { relaySessions, providerTasks, proposals, auditEvents } from "../db/schema.js";
-import { requireRole } from "../middleware/auth.js";
+import { requireRole, requirePurgeRecoveryAuth } from "../middleware/auth.js";
 import { sanitizeAndValidateImage } from "../services/image-sanitizer.js";
 import { getProvider } from "../providers/youcam/index.js";
 import { eventBus } from "../services/event-bus.js";
@@ -29,9 +37,13 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const input = parseResult.data;
+    const wearerBootstrapCode = generateBootstrapCode();
+    const helperBootstrapCode = generateBootstrapCode();
     const wearerToken = generateCapabilityToken();
     const helperToken = generateCapabilityToken();
 
+    const wearerBootstrapCodeHash = hashBootstrapCode(wearerBootstrapCode);
+    const helperBootstrapCodeHash = hashBootstrapCode(helperBootstrapCode);
     const wearerHash = hashCapabilityToken(wearerToken);
     const helperHash = hashCapabilityToken(helperToken);
 
@@ -42,6 +54,8 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
       .insert(relaySessions)
       .values({
         status: "DRAFT",
+        wearerBootstrapCodeHash,
+        helperBootstrapCodeHash,
         wearerTokenHash: wearerHash,
         helperTokenHash: helperHash,
         consentVersion: input.consent_version,
@@ -70,7 +84,8 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.status(201).send({
       session_id: session.id,
       wearer_token: wearerToken,
-      wearer_url: `${config.APP_BASE_URL}/wearer/${wearerToken}`,
+      wearer_bootstrap_code: wearerBootstrapCode,
+      wearer_url: `${config.APP_BASE_URL}/wearer#bootstrap=${wearerBootstrapCode}`,
       expires_at: expiresAt.toISOString(),
       status: session.status
     });
@@ -164,21 +179,26 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
       const auth = req.authSession!;
       const db = await getDb();
 
-      // Regenerate fresh helper capability token
+      // Regenerate fresh helper capability token and single-use bootstrap code
       const helperToken = generateCapabilityToken();
       const helperHash = hashCapabilityToken(helperToken);
+      const helperBootstrapCode = generateBootstrapCode();
+      const helperBootstrapCodeHash = hashBootstrapCode(helperBootstrapCode);
 
       await db
         .update(relaySessions)
         .set({
           helperTokenHash: helperHash,
+          helperBootstrapCodeHash,
+          helperBootstrapRedeemedAt: null,
           updatedAt: new Date()
         })
         .where(eq(relaySessions.id, auth.sessionId));
 
       return reply.send({
         helper_token: helperToken,
-        helper_url: `${config.APP_BASE_URL}/helper/${helperToken}`,
+        helper_bootstrap_code: helperBootstrapCode,
+        helper_url: `${config.APP_BASE_URL}/helper#bootstrap=${helperBootstrapCode}`,
         expires_at: auth.session.expiresAt.toISOString()
       });
     }
@@ -215,6 +235,8 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     let deletedFiles = 0;
     let failedFiles = 0;
     const errors: string[] = [];
+    const structuredErrors: StructuredDeletionError[] = [];
+    const encKey = config.PROVIDER_ID_ENCRYPTION_KEY || config.ENCRYPTION_KEY_HEX;
 
     // 1. Delete remote provider tasks
     for (const prop of sessionProposals) {
@@ -239,7 +261,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
           .where(eq(providerTasks.id, t.id));
 
         try {
-          const remoteTaskId = decryptProviderIdentifier(t.taskIdCiphertext, config.ENCRYPTION_KEY_HEX);
+          const remoteTaskId = decryptProviderIdentifier(t.taskIdCiphertext, encKey);
           const res = await provider.deleteTask(remoteTaskId);
           if (res.confirmed) {
             deletedTasks++;
@@ -253,7 +275,14 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
               .update(providerTasks)
               .set({ taskDeletionStatus: "FAILED" })
               .where(eq(providerTasks.id, t.id));
-            errors.push(`Task ${t.id} deletion unconfirmed by provider`);
+            const msg = `Task ${t.id} deletion unconfirmed by provider`;
+            errors.push(msg);
+            structuredErrors.push({
+              resource_type: "TASK",
+              resource_id: t.id,
+              error: msg,
+              timestamp: new Date().toISOString()
+            });
           }
         } catch (err: any) {
           failedTasks++;
@@ -261,7 +290,14 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
             .update(providerTasks)
             .set({ taskDeletionStatus: "FAILED" })
             .where(eq(providerTasks.id, t.id));
-          errors.push(`Task ${t.id} deletion error: ${err.message}`);
+          const msg = `Task ${t.id} deletion error: ${err.message}`;
+          errors.push(msg);
+          structuredErrors.push({
+            resource_type: "TASK",
+            resource_id: t.id,
+            error: msg,
+            timestamp: new Date().toISOString()
+          });
         }
       }
 
@@ -272,7 +308,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
           deletedFiles++;
         } else {
           try {
-            const remoteGarmentId = decryptProviderIdentifier(prop.garmentFileIdCiphertext, config.ENCRYPTION_KEY_HEX);
+            const remoteGarmentId = decryptProviderIdentifier(prop.garmentFileIdCiphertext, encKey);
             const ok = await provider.deleteFile(remoteGarmentId);
             if (ok) {
               deletedFiles++;
@@ -286,7 +322,14 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
                 .update(proposals)
                 .set({ garmentDeletionStatus: "FAILED" })
                 .where(eq(proposals.id, prop.id));
-              errors.push(`Garment file for proposal ${prop.id} deletion failed`);
+              const msg = `Garment file for proposal ${prop.id} deletion failed`;
+              errors.push(msg);
+              structuredErrors.push({
+                resource_type: "GARMENT_FILE",
+                resource_id: prop.id,
+                error: msg,
+                timestamp: new Date().toISOString()
+              });
             }
           } catch (err: any) {
             failedFiles++;
@@ -294,7 +337,14 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
               .update(proposals)
               .set({ garmentDeletionStatus: "FAILED" })
               .where(eq(proposals.id, prop.id));
-            errors.push(`Garment file error: ${err.message}`);
+            const msg = `Garment file error: ${err.message}`;
+            errors.push(msg);
+            structuredErrors.push({
+              resource_type: "GARMENT_FILE",
+              resource_id: prop.id,
+              error: msg,
+              timestamp: new Date().toISOString()
+            });
           }
         }
       }
@@ -307,7 +357,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
         deletedFiles++;
       } else {
         try {
-          const remoteSourceId = decryptProviderIdentifier(session.sourceFileIdCiphertext, config.ENCRYPTION_KEY_HEX);
+          const remoteSourceId = decryptProviderIdentifier(session.sourceFileIdCiphertext, encKey);
           const ok = await provider.deleteFile(remoteSourceId);
           if (ok) {
             deletedFiles++;
@@ -321,7 +371,14 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
               .update(relaySessions)
               .set({ sourceDeletionStatus: "FAILED" })
               .where(eq(relaySessions.id, sessionId));
-            errors.push("Source file deletion failed");
+            const msg = "Source file deletion failed";
+            errors.push(msg);
+            structuredErrors.push({
+              resource_type: "SOURCE_FILE",
+              resource_id: sessionId,
+              error: msg,
+              timestamp: new Date().toISOString()
+            });
           }
         } catch (err: any) {
           failedFiles++;
@@ -329,7 +386,14 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
             .update(relaySessions)
             .set({ sourceDeletionStatus: "FAILED" })
             .where(eq(relaySessions.id, sessionId));
-          errors.push(`Source file deletion error: ${err.message}`);
+          const msg = `Source file deletion error: ${err.message}`;
+          errors.push(msg);
+          structuredErrors.push({
+            resource_type: "SOURCE_FILE",
+            resource_id: sessionId,
+            error: msg,
+            timestamp: new Date().toISOString()
+          });
         }
       }
     }
@@ -354,6 +418,17 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     const deletionError = errors.length > 0 ? errors.join("; ") : null;
     const revokedAt = session.revokedAt || now;
 
+    // Purge recovery token: if partial failures remain, mint narrow recovery token; if all confirmed, clear it
+    let purgeRecoveryToken: string | null = null;
+    let purgeRecoveryTokenHash: string | null = null;
+    let purgeRecoveryExpiresAt: Date | null = null;
+
+    if (hasFailures) {
+      purgeRecoveryToken = generatePurgeRecoveryToken();
+      purgeRecoveryTokenHash = hashPurgeRecoveryToken(purgeRecoveryToken);
+      purgeRecoveryExpiresAt = new Date(Date.now() + 3600 * 1000); // 1-hour window
+    }
+
     await db
       .update(relaySessions)
       .set({
@@ -363,6 +438,12 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
         deletionStatus: overallStatus,
         sourceDeletionStatus: sourceStatus,
         deletionError,
+        deletionErrors: structuredErrors.length > 0 ? structuredErrors : null,
+        purgeRecoveryTokenHash,
+        purgeRecoveryExpiresAt,
+        // Active session tokens are nullified on revocation
+        wearerSessionTokenHash: null,
+        helperSessionTokenHash: null,
         updatedAt: now
       })
       .where(eq(relaySessions.id, sessionId));
@@ -385,11 +466,20 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
       local_access_revoked: true,
       evaluated_commit_sha: process.env.GIT_COMMIT_SHA || "unknown",
       evidence_authority: "WEARERKEY_AUDITABLE_LEDGER",
-      deletion_error: deletionError
+      deletion_error: deletionError,
+      ...(structuredErrors.length > 0 ? { deletion_errors: structuredErrors } : {}),
+      ...(purgeRecoveryToken ? { purge_recovery_token: purgeRecoveryToken } : {})
     };
 
-    const signatureInfo = signReceiptPayload(receiptPayload, config.ENCRYPTION_KEY_HEX);
+    const signingKey = config.RECEIPT_SIGNING_KEY || config.ENCRYPTION_KEY_HEX;
+    const signatureInfo = signReceiptPayload(receiptPayload, signingKey);
     receiptPayload.receipt_hmac = signatureInfo;
+
+    // Persist immutable signed receipt in database
+    await db
+      .update(relaySessions)
+      .set({ signedReceiptJson: JSON.stringify(receiptPayload) })
+      .where(eq(relaySessions.id, sessionId));
 
     return receiptPayload;
   }
@@ -430,10 +520,10 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // 5. Retry Purge on Partial Deletion Failure (Wearer Only)
+  // 5. Retry Purge on Partial Deletion Failure (Protected by Purge Recovery Authorization)
   fastify.post(
     "/api/wearer/session/retry-purge",
-    { preHandler: [requireRole("wearer")] },
+    { preHandler: [requirePurgeRecoveryAuth] },
     async (req, reply) => {
       const auth = req.authSession!;
       const db = await getDb();

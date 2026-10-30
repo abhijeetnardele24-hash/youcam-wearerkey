@@ -3,8 +3,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Enable corepack for pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Enable corepack for pinned pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 # Copy manifest files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
@@ -32,7 +32,7 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 ENV NODE_ENV=production
 ENV PORT=3000

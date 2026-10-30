@@ -28,6 +28,7 @@ export const App: React.FC = () => {
           <Route path="/helper/:token" element={<HelperRoomPage />} />
           <Route path="/helper" element={<HelperRoomPage />} />
           <Route path="/receipt/:token" element={<ReceiptPage />} />
+          <Route path="/receipt" element={<ReceiptPage />} />
           <Route path="/judge" element={<JudgeTourPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -9,19 +9,21 @@ export const ReceiptPage: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
   const { data: receipt, isLoading, error } = useQuery({
-    queryKey: ['audit-receipt', token],
+    queryKey: ['audit-receipt', token || 'current'],
     queryFn: async () => {
-      if (!token) throw new Error('No token provided');
-      try {
-        return await api.getWearerReceipt(token);
-      } catch (e: any) {
-        if (e.statusCode === 403 || e.statusCode === 401) {
-          return await api.getHelperReceipt(token);
+      if (token) {
+        try {
+          return await api.getWearerReceipt(token);
+        } catch (e: any) {
+          if (e.statusCode === 403 || e.statusCode === 401) {
+            return await api.getHelperReceipt(token);
+          }
+          throw e;
         }
-        throw e;
       }
+      // Without token in URL: authenticate via cookie or session header
+      return await api.getReceipt();
     },
-    enabled: !!token,
   });
 
   const handleCopy = () => {

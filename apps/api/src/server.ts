@@ -28,13 +28,46 @@ export async function buildApp(): Promise<FastifyInstance> {
         "req.headers.cookie",
         'res.headers["set-cookie"]',
         "req.headers['x-capability-token']",
-        "req.query.token"
+        "req.headers['x-purge-recovery-token']",
+        "req.headers['x-session-token']",
+        "req.query.token",
+        "req.body.bootstrap_code",
+        "req.body.session_token",
+        "req.body.token",
+        "req.body.wearer_token",
+        "req.body.helper_token",
+        "req.body.purge_recovery_token"
       ]
     }
   });
 
-  // Security Headers
-  app.addHook("onSend", async (_request, reply) => {
+  // In-memory sliding-window rate limiter per client IP
+  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+  app.addHook("onRequest", async (req, reply) => {
+    // Skip rate limiting during internal test runs
+    if (config.NODE_ENV === "test") return;
+
+    const ip = req.ip || req.socket.remoteAddress || "127.0.0.1";
+    const now = Date.now();
+    const entry = rateLimitMap.get(ip);
+
+    if (!entry || now > entry.resetAt) {
+      rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    } else {
+      entry.count += 1;
+      if (entry.count > config.RATE_LIMIT_MAX) {
+        return reply.status(429).send({
+          error: "TOO_MANY_REQUESTS",
+          message: "Rate limit exceeded. Please wait a minute before retrying."
+        });
+      }
+    }
+  });
+
+  // Security Headers & Cache-Control No-Store
+  app.addHook("onSend", async (req, reply) => {
     reply.header(
       "Content-Security-Policy",
       "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; script-src 'self' 'unsafe-inline';"
@@ -43,21 +76,55 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.header("X-Frame-Options", "SAMEORIGIN");
     reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
     reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+
+    // Enforce private no-store headers on all API responses
+    if (req.url.startsWith("/api/")) {
+      reply.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      reply.header("Pragma", "no-cache");
+      reply.header("Expires", "0");
+    }
   });
 
-  // Cookie Support for capability token bootstrap
+  // CSRF Origin validation on state-changing requests
+  const allowedOrigins = config.CORS_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+  app.addHook("onRequest", async (req, reply) => {
+    if (["POST", "PUT", "DELETE", "PATCH"].includes(req.method)) {
+      const origin = req.headers.origin;
+      if (origin) {
+        const isAllowed =
+          allowedOrigins.includes(origin) ||
+          origin.startsWith("http://localhost:") ||
+          origin.startsWith("http://127.0.0.1:") ||
+          (config.APP_BASE_URL && origin === config.APP_BASE_URL);
+
+        if (!isAllowed) {
+          return reply.status(403).send({
+            error: "CSRF_ORIGIN_DENIED",
+            message: "Request origin not authorized by WearerKey security policy."
+          });
+        }
+      }
+    }
+  });
+
+  // Cookie Support for capability token bootstrap & session management
+  const cookieSecret = config.SESSION_COOKIE_SECRET || config.ENCRYPTION_KEY_HEX;
   await app.register(fastifyCookie, {
-    secret: config.ENCRYPTION_KEY_HEX,
+    secret: cookieSecret,
     parseOptions: {}
   });
 
   // CORS: Explicit allowlist
-  const allowedOrigins = config.CORS_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
   await app.register(cors, {
     origin: (origin, cb) => {
       // Allow requests with no origin (like mobile apps, curl, server-to-server)
       if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("http://127.0.0.1:") ||
+        (config.APP_BASE_URL && origin === config.APP_BASE_URL)
+      ) {
         return cb(null, true);
       }
       return cb(new Error("CORS origin not allowed by WearerKey security policy"), false);

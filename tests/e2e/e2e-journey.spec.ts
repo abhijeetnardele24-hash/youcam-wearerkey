@@ -103,14 +103,13 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     await launchBtn.click();
     await expect(page.getByText(/Active Seed:/i)).toBeVisible({ timeout: 15000 });
 
-    // 2. Switch to Wearer View tab
-    const wearerTab = page.getByRole('tab', { name: 'Wearer View' });
-    await wearerTab.click();
-
-    // 3. Find Wearer Room iframe
+    // 2. Find Wearer Room iframe and ensure seeded content is loaded
     const wearerFrame = page.frameLocator('iframe[title="Wearer Room"]');
+    await expect(wearerFrame.getByRole('heading', { name: 'Tailored Camel Wool Overcoat' })).toBeVisible({ timeout: 15000 });
+
+    // 3. Open Revoke Pass modal
     const revokeBtn = wearerFrame.getByRole('button', { name: /Revoke Pass/i });
-    await expect(revokeBtn).toBeVisible({ timeout: 10000 });
+    await expect(revokeBtn).toBeVisible({ timeout: 15000 });
     await revokeBtn.click();
 
     // 4. Modal is visible

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import crypto from "node:crypto";
 
 const ConfigSchema = z.object({
   PORT: z.coerce.number().default(process.env.NODE_ENV === "production" ? 3000 : 4000),
@@ -12,20 +11,34 @@ const ConfigSchema = z.object({
   YOUCAM_BASE_URL: z.string().url().default("https://yce-api-01.makeupar.com"),
   YOUCAM_API_KEY: z.string().optional().default(""),
 
-  // AES-256-GCM encryption key for provider identifiers at rest (64 hex characters)
+  // Cryptographic Keys Separation
+  // 1. AES-256-GCM encryption key for provider identifiers at rest (64 hex characters)
+  PROVIDER_ID_ENCRYPTION_KEY: z.string().optional().default(""),
+  // Backward compatibility alias for PROVIDER_ID_ENCRYPTION_KEY
   ENCRYPTION_KEY_HEX: z.string().optional().default(""),
+
+  // 2. Cookie & session signing secret (64 hex characters)
+  SESSION_COOKIE_SECRET: z.string().optional().default(""),
+
+  // 3. HMAC-SHA256 deletion receipt signing key (64 hex characters)
+  RECEIPT_SIGNING_KEY: z.string().optional().default(""),
 
   // Optional external Postgres; defaults to in-memory/file PGlite if omitted
   DATABASE_URL: z.string().optional().default(""),
 
   // Provider mode: LIVE_YOUCAM | RECORDED_LIVE_RESULT | DEMO_FIXTURE
-  YOUCAM_PROVIDER_MODE: z.enum(["LIVE_YOUCAM", "RECORDED_LIVE_RESULT", "DEMO_FIXTURE"]).default("DEMO_FIXTURE")
+  YOUCAM_PROVIDER_MODE: z.enum(["LIVE_YOUCAM", "RECORDED_LIVE_RESULT", "DEMO_FIXTURE"]).default("DEMO_FIXTURE"),
+
+  // Rate limiting max requests per minute
+  RATE_LIMIT_MAX: z.coerce.number().default(100)
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
 
-// Dedicated in-memory fallback key for non-production environments
-const DEV_TEST_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+// Separate deterministic keys for development/test environments
+const DEV_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const DEV_SESSION_SECRET = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+const DEV_RECEIPT_KEY = "11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff";
 
 export function loadConfig(env = process.env): Config {
   const result = ConfigSchema.safeParse(env);
@@ -36,17 +49,37 @@ export function loadConfig(env = process.env): Config {
 
   const conf = result.data;
 
-  // In production, require an explicit, cryptographically valid 32-byte (64 hex chars) key
+  // Resolve PROVIDER_ID_ENCRYPTION_KEY
+  conf.PROVIDER_ID_ENCRYPTION_KEY =
+    conf.PROVIDER_ID_ENCRYPTION_KEY || conf.ENCRYPTION_KEY_HEX || (conf.NODE_ENV === "production" ? "" : DEV_ENCRYPTION_KEY);
+  conf.ENCRYPTION_KEY_HEX = conf.PROVIDER_ID_ENCRYPTION_KEY;
+
+  // Resolve SESSION_COOKIE_SECRET
+  conf.SESSION_COOKIE_SECRET =
+    conf.SESSION_COOKIE_SECRET || (conf.NODE_ENV === "production" ? "" : DEV_SESSION_SECRET);
+
+  // Resolve RECEIPT_SIGNING_KEY
+  conf.RECEIPT_SIGNING_KEY =
+    conf.RECEIPT_SIGNING_KEY || (conf.NODE_ENV === "production" ? "" : DEV_RECEIPT_KEY);
+
+  // In production, require explicit, cryptographically valid 32-byte (64 hex chars) keys for each domain
   if (conf.NODE_ENV === "production") {
-    if (!conf.ENCRYPTION_KEY_HEX || conf.ENCRYPTION_KEY_HEX.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(conf.ENCRYPTION_KEY_HEX)) {
+    const isHex64 = (k: string) => k && k.length === 64 && /^[0-9a-fA-F]{64}$/.test(k);
+
+    if (!isHex64(conf.PROVIDER_ID_ENCRYPTION_KEY)) {
       throw new Error(
-        "FATAL: ENCRYPTION_KEY_HEX must be a 64-character hex string (32 bytes) in production environment. Refusing to start."
+        "FATAL: PROVIDER_ID_ENCRYPTION_KEY (or ENCRYPTION_KEY_HEX) must be a 64-character hex string (32 bytes) in production. Refusing to start."
       );
     }
-  } else {
-    // In dev/test, if not provided, use an explicit test key or generate one
-    if (!conf.ENCRYPTION_KEY_HEX || conf.ENCRYPTION_KEY_HEX.length !== 64) {
-      conf.ENCRYPTION_KEY_HEX = DEV_TEST_KEY;
+    if (!isHex64(conf.SESSION_COOKIE_SECRET)) {
+      throw new Error(
+        "FATAL: SESSION_COOKIE_SECRET must be a 64-character hex string (32 bytes) in production. Refusing to start."
+      );
+    }
+    if (!isHex64(conf.RECEIPT_SIGNING_KEY)) {
+      throw new Error(
+        "FATAL: RECEIPT_SIGNING_KEY must be a 64-character hex string (32 bytes) in production. Refusing to start."
+      );
     }
   }
 

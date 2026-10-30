@@ -53,7 +53,7 @@ We asked: **What if shopping companions could curate outfits and request virtual
 ## Accomplishments We're Proud Of
 
 - **30-Second Judge Tour:** Evaluators can visit `/judge` and launch a pre-seeded, side-by-side interactive split screen that demonstrates the cryptographic boundary live in 30 seconds.
-- **46 Automated Tests Passing (38 Vitest + 8 Playwright/Axe):** Complete coverage of cryptographic domain primitives, consent gates, YouCam Clothes V4 contract mocks, state transitions, end-to-end two-role API integration, and WCAG 2.1 AA accessibility.
+- **50 Automated Tests Passing (42 Vitest + 8 Playwright/Axe):** Complete coverage of cryptographic domain primitives, consent gates, YouCam Clothes V4 contract mocks, state transitions, end-to-end two-role API integration, and WCAG 2.1 AA accessibility.
 - **Single-Container Unified Delivery:** Fastify serves both the secure API and the production-built React frontend with zero external runtime dependencies.
 
 ---

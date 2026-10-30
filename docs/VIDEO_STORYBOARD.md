@@ -98,3 +98,4 @@
 ### Voiceover / Audio
 > "Hackathon judges can test both roles side-by-side in under 30 seconds using our pre-seeded judge tour at `/judge`.  
 > WearerKey is backed by 46 automated tests, full WCAG 2.1 AA accessibility, and zero fabricated claims. Thank you."
+

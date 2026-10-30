@@ -36,8 +36,16 @@ async function initSchema(pglite: PGlite) {
     CREATE TABLE IF NOT EXISTS relay_sessions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',
+      wearer_bootstrap_code_hash VARCHAR(64),
+      wearer_bootstrap_redeemed_at TIMESTAMPTZ,
+      helper_bootstrap_code_hash VARCHAR(64),
+      helper_bootstrap_redeemed_at TIMESTAMPTZ,
+      wearer_session_token_hash VARCHAR(64),
+      helper_session_token_hash VARCHAR(64),
       wearer_token_hash VARCHAR(64) NOT NULL,
       helper_token_hash VARCHAR(64) NOT NULL,
+      purge_recovery_token_hash VARCHAR(64),
+      purge_recovery_expires_at TIMESTAMPTZ,
       consent_version VARCHAR(32) NOT NULL DEFAULT '2026-10-30-v1',
       allowed_categories JSONB NOT NULL,
       max_proposals INTEGER NOT NULL DEFAULT 3,
@@ -48,6 +56,8 @@ async function initSchema(pglite: PGlite) {
       deletion_status VARCHAR(32) NOT NULL DEFAULT 'NOT_REQUESTED',
       source_deletion_status VARCHAR(32) NOT NULL DEFAULT 'NOT_REQUESTED',
       deletion_error TEXT,
+      deletion_errors JSONB,
+      signed_receipt_json TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       revoked_at TIMESTAMPTZ,
@@ -111,14 +121,18 @@ async function initSchema(pglite: PGlite) {
       timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `;
-
   await pglite.exec(ddl);
 }
 
-export async function closeDb(): Promise<void> {
+export async function resetDbForTesting(): Promise<void> {
   if (pgliteInstance) {
-    await pgliteInstance.close();
-    pgliteInstance = null;
-    dbInstance = null;
+    await pgliteInstance.exec(`
+      DROP TABLE IF EXISTS audit_events CASCADE;
+      DROP TABLE IF EXISTS decisions CASCADE;
+      DROP TABLE IF EXISTS provider_tasks CASCADE;
+      DROP TABLE IF EXISTS proposals CASCADE;
+      DROP TABLE IF EXISTS relay_sessions CASCADE;
+    `);
+    await initSchema(pgliteInstance);
   }
 }

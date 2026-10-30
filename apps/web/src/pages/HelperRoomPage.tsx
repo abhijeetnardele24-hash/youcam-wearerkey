@@ -24,41 +24,56 @@ export const HelperRoomPage: React.FC = () => {
   const { token: routeToken } = useParams<{ token: string }>();
   const queryClient = useQueryClient();
 
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+
+  // Single-use capability token: read from route or URL fragment without storing in sessionStorage
   const [token] = useState<string>(() => {
-    let raw = routeToken;
-    if (!raw && typeof window !== 'undefined') {
+    if (routeToken) return routeToken;
+    if (typeof window !== 'undefined') {
       const hash = window.location.hash;
+      if (hash.startsWith('#bootstrap=')) {
+        return hash.substring(11);
+      }
       if (hash.startsWith('#token=')) {
-        raw = hash.substring(7);
-      } else if (hash.startsWith('#') && hash.length > 10) {
-        raw = hash.substring(1);
+        return hash.substring(7);
       }
-      if (!raw) {
-        const params = new URLSearchParams(window.location.search);
-        raw = params.get('token') || undefined;
+      if (hash.startsWith('#') && hash.length > 10) {
+        return hash.substring(1);
       }
     }
-    if (raw) {
-      try {
-        sessionStorage.setItem('wearerkey_helper_token', raw);
-      } catch {}
-      return raw;
-    }
-    try {
-      return sessionStorage.getItem('wearerkey_helper_token') || '';
-    } catch {
-      return '';
-    }
+    return '';
   });
 
   useEffect(() => {
-    if (token) {
-      api.bootstrap(token, 'helper').catch(() => {});
-      if (window.history.replaceState) {
-        window.history.replaceState(null, '', '/helper');
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      let code = '';
+      if (hash.startsWith('#bootstrap=')) {
+        code = hash.substring(11);
+      } else if (hash.startsWith('#token=')) {
+        code = hash.substring(7);
+      }
+      if (code) {
+        // Immediately remove capability code from browser address bar
+        if (window.history.replaceState) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+        api.bootstrap(code, 'helper')
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ['helper-session'] });
+          })
+          .catch((err: any) => {
+            if (err?.statusCode === 409 || err?.error === 'BOOTSTRAP_CODE_ALREADY_USED') {
+              setBootstrapError('This capability link has already been redeemed. Single-use bootstrap links cannot be replayed.');
+            } else {
+              setBootstrapError(err?.message || 'Bootstrap authentication failed.');
+            }
+          });
+      } else if (token) {
+        api.bootstrap(token, 'helper').catch(() => {});
       }
     }
-  }, [token]);
+  }, [token, queryClient]);
 
   // Form states
   const [label, setLabel] = useState('');
@@ -77,13 +92,12 @@ export const HelperRoomPage: React.FC = () => {
     refetch,
   } = useQuery({
     queryKey: ['helper-session', token],
-    queryFn: () => api.getHelperSession(token!),
-    enabled: !!token,
+    queryFn: () => api.getHelperSession(token || undefined),
     refetchInterval: 3000,
   });
 
   const generateTryOnMutation = useMutation({
-    mutationFn: (proposalId: string) => api.generateTryOn(token!, proposalId),
+    mutationFn: (proposalId: string) => api.generateTryOn(token || undefined, proposalId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['helper-session', token] });
     },
@@ -182,7 +196,7 @@ export const HelperRoomPage: React.FC = () => {
       if (brand.trim()) formData.append('brand', brand.trim());
       formData.append('garmentImage', selectedFile);
 
-      await api.createHelperProposal(token, formData);
+      await api.createHelperProposal(token || undefined, formData);
 
       // Reset form
       setLabel('');
@@ -204,6 +218,24 @@ export const HelperRoomPage: React.FC = () => {
       <div className="max-w-4xl mx-auto px-4 py-16 text-center">
         <div className="w-10 h-10 rounded-full border-4 border-helper border-t-transparent animate-spin mx-auto mb-4" />
         <p className="text-sm font-serif font-bold text-ink">Connecting to Helper Workspace...</p>
+      </div>
+    );
+  }
+
+  if (bootstrapError) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-16 text-center">
+        <EyeOff className="w-12 h-12 text-rust mx-auto mb-3" />
+        <h2 className="font-serif text-xl font-bold text-ink mb-2">Capability Link Redeemed</h2>
+        <p className="text-xs text-ink-muted mb-6 leading-relaxed">
+          {bootstrapError}
+        </p>
+        <Link
+          to="/"
+          className="inline-block px-4 py-2 bg-helper text-white text-xs font-semibold rounded hover:bg-helper-dark transition-colors"
+        >
+          Return to Home
+        </Link>
       </div>
     );
   }

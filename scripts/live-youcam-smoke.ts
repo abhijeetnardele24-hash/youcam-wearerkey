@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { execSync } from "node:child_process";
 import sharp from "sharp";
 import { YouCamClothesProvider } from "../apps/api/src/providers/youcam/youcam-provider.js";
@@ -16,7 +17,7 @@ interface SmokeReceipt {
   live_execution_verified: boolean;
   model_name: string;
   latency_ms?: number;
-  task_id?: string;
+  task_id_hash?: string;
   deletion_status?: string;
   reason?: string;
   error?: string;
@@ -137,12 +138,12 @@ async function runSmoke() {
     // 2. Upload source via official presigned protocol
     console.log(`  Uploading source reference image...`);
     const sourceFile = await provider.uploadImage(sourceImage, "source");
-    console.log(`  Source uploaded: ${sourceFile.fileId}`);
+    console.log(`  Source uploaded (masked ID): ${sourceFile.fileId.slice(0, 4)}...${sourceFile.fileId.slice(-4)}`);
 
     // 3. Upload garment via official presigned protocol
     console.log(`  Uploading garment image...`);
     const garmentFile = await provider.uploadImage(garmentImage, "garment");
-    console.log(`  Garment uploaded: ${garmentFile.fileId}`);
+    console.log(`  Garment uploaded (masked ID): ${garmentFile.fileId.slice(0, 4)}...${garmentFile.fileId.slice(-4)}`);
 
     // 4. Create Clothes V4 task
     console.log(`  Creating Clothes V4 task...`);
@@ -151,7 +152,7 @@ async function runSmoke() {
       refFileId: garmentFile.fileId,
       garmentCategory: "upper_body"
     });
-    console.log(`  Task created: ${task.taskId}`);
+    console.log(`  Task created (masked ID): ${task.taskId.slice(0, 4)}...${task.taskId.slice(-4)}`);
 
     // 5. Poll for completion
     console.log(`  Polling task status...`);
@@ -166,6 +167,7 @@ async function runSmoke() {
     const garmDel = await provider.deleteFile(garmentFile.fileId);
 
     const isPurged = taskDel.confirmed && srcDel && garmDel;
+    const saltedTaskIdHash = crypto.createHash("sha256").update(task.taskId + ":" + commitSha).digest("hex").slice(0, 16);
 
     const receipt: SmokeReceipt = {
       evaluated_commit_sha: commitSha,
@@ -177,7 +179,7 @@ async function runSmoke() {
       live_execution_verified: status.status === "SUCCEEDED",
       model_name: "YouCam AI Clothes V4",
       latency_ms: latency,
-      task_id: task.taskId,
+      task_id_hash: saltedTaskIdHash,
       deletion_status: isPurged ? "CONFIRMED" : "PARTIAL_FAILURE",
       reason: status.status === "SUCCEEDED" ? "Live YouCam Clothes V4 verified end-to-end" : status.errorMessage
     };

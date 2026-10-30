@@ -8,7 +8,7 @@ import { decryptProviderIdentifier, signReceiptPayload } from "@wearerkey/domain
 import { config } from "../config.js";
 import { getDb } from "../db/index.js";
 import { relaySessions, proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
-import { requireRole } from "../middleware/auth.js";
+import { requireRole, requirePurgeRecoveryAuth } from "../middleware/auth.js";
 import { eventBus } from "../services/event-bus.js";
 import { ephemeralImageStore } from "../services/garment-store.js";
 import { request } from "undici";
@@ -176,7 +176,8 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: "NO_RESULT", message: "No try-on result available" });
       }
 
-      const rawResultUrl = decryptProviderIdentifier(task.resultUrlCiphertext, config.ENCRYPTION_KEY_HEX);
+      const encKey = config.PROVIDER_ID_ENCRYPTION_KEY || config.ENCRYPTION_KEY_HEX;
+      const rawResultUrl = decryptProviderIdentifier(task.resultUrlCiphertext, encKey);
       const fallbackPath = path.resolve(publicDir, "sample_vto_result.png");
 
       // If it's a relative URL, local asset, or fake mock URL
@@ -191,6 +192,25 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
           return reply.send(fs.readFileSync(fallbackPath));
         }
         return reply.redirect(rawResultUrl.startsWith("/") ? rawResultUrl : "/assets/sample_vto_result.png");
+      }
+
+      // SSRF Protection: Restrict remote fetch to authorized YouCam CDN domains
+      try {
+        const parsed = new URL(rawResultUrl);
+        const host = parsed.hostname.toLowerCase();
+        const isAuthorizedHost =
+          host === "yce-api-01.makeupar.com" ||
+          host.endsWith(".makeupar.com") ||
+          host.endsWith(".perfectcorp.com") ||
+          host === "localhost" ||
+          host === "127.0.0.1";
+
+        if (!isAuthorizedHost) {
+          req.log.warn({ host }, "Blocked attempt to stream result from unauthorized host");
+          return reply.status(403).send({ error: "SSRF_BLOCKED", message: "Result origin domain not allowed" });
+        }
+      } catch {
+        return reply.status(400).send({ error: "INVALID_RESULT_URL" });
       }
 
       // Stream from YouCam CDN directly to wearer browser
@@ -303,9 +323,20 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
   // 6. Wearer Scoped Privacy & Deletion Receipt (Signed Tamper-Evident Receipt v2.0)
   fastify.get(
     "/api/wearer/receipt",
-    { preHandler: [requireRole("wearer")] },
+    { preHandler: [requirePurgeRecoveryAuth] },
     async (req, reply) => {
       const auth = req.authSession!;
+      const session = auth.session;
+
+      // If an immutable signed receipt was already generated and saved in DB, serve it directly
+      if (session.signedReceiptJson) {
+        try {
+          return reply.send(JSON.parse(session.signedReceiptJson));
+        } catch {
+          // fall through
+        }
+      }
+
       const db = await getDb();
 
       const taskRows = await db
@@ -337,6 +368,7 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
       const receiptPayload: any = {
         schema_version: "2.0",
         session_id: auth.sessionId,
+        status: auth.session.status,
         revoked_at: auth.session.revokedAt ? auth.session.revokedAt.toISOString() : null,
         purged_at: auth.session.purgedAt ? auth.session.purgedAt.toISOString() : null,
         overall_deletion_status: auth.session.deletionStatus,
@@ -351,10 +383,12 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
         local_access_revoked: auth.session.status === "REVOKED",
         evaluated_commit_sha: process.env.GIT_COMMIT_SHA || "unknown",
         evidence_authority: "WEARERKEY_AUDITABLE_LEDGER",
-        deletion_error: auth.session.deletionError || null
+        deletion_error: auth.session.deletionError || null,
+        ...(auth.session.deletionErrors ? { deletion_errors: auth.session.deletionErrors } : {})
       };
 
-      const signatureInfo = signReceiptPayload(receiptPayload, config.ENCRYPTION_KEY_HEX);
+      const signingKey = config.RECEIPT_SIGNING_KEY || config.ENCRYPTION_KEY_HEX;
+      const signatureInfo = signReceiptPayload(receiptPayload, signingKey);
       receiptPayload.receipt_hmac = signatureInfo;
 
       return reply.send(receiptPayload);

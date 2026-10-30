@@ -68,16 +68,18 @@ export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
 
 export const CreateSessionResponseSchema = z.object({
   session_id: z.string().uuid(),
-  wearer_token: z.string().min(32),
-  wearer_url: z.string().url(),
+  wearer_token: z.string().min(16).optional(),
+  wearer_bootstrap_code: z.string().min(16).optional(),
+  wearer_url: z.string(),
   expires_at: z.string().datetime(),
   status: SessionStatusSchema
 });
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>;
 
 export const MintHelperLinkResponseSchema = z.object({
-  helper_token: z.string().min(32),
-  helper_url: z.string().url(),
+  helper_token: z.string().min(16).optional(),
+  helper_bootstrap_code: z.string().min(16).optional(),
+  helper_url: z.string(),
   expires_at: z.string().datetime()
 });
 export type MintHelperLinkResponse = z.infer<typeof MintHelperLinkResponseSchema>;
@@ -85,7 +87,8 @@ export type MintHelperLinkResponse = z.infer<typeof MintHelperLinkResponseSchema
 // --- Authentication & Single-Use Bootstrap ---
 
 export const BootstrapRequestSchema = z.object({
-  token: z.string().min(16),
+  bootstrap_code: z.string().min(16).optional(),
+  token: z.string().min(16).optional(),
   role: z.enum(["wearer", "helper"]).optional()
 });
 export type BootstrapRequest = z.infer<typeof BootstrapRequestSchema>;
@@ -259,6 +262,14 @@ export const ReceiptHmacSchema = z.object({
 });
 export type ReceiptHmac = z.infer<typeof ReceiptHmacSchema>;
 
+export const StructuredDeletionErrorSchema = z.object({
+  resource_type: z.enum(["TASK", "SOURCE_FILE", "GARMENT_FILE"]),
+  resource_id: z.string(),
+  error: z.string(),
+  timestamp: z.string().datetime()
+});
+export type StructuredDeletionError = z.infer<typeof StructuredDeletionErrorSchema>;
+
 export const DeletionReceiptSchema = z.object({
   schema_version: z.string().default("2.0"),
   session_id: z.string().uuid(),
@@ -277,14 +288,16 @@ export const DeletionReceiptSchema = z.object({
   evaluated_commit_sha: z.string(),
   evidence_authority: z.string(),
   deletion_error: z.string().nullable().optional(),
+  deletion_errors: z.array(StructuredDeletionErrorSchema).optional(),
+  purge_recovery_token: z.string().nullable().optional(),
   receipt_hmac: ReceiptHmacSchema.optional()
 });
 export type DeletionReceipt = z.infer<typeof DeletionReceiptSchema>;
 
 export const ReceiptVerificationRequestSchema = z.object({
   receipt: z.record(z.any()),
-  signature: z.string(),
-  signed_at: z.string().datetime(),
+  signature: z.string().optional(),
+  signed_at: z.string().datetime().optional(),
   key_id: z.string().optional()
 });
 export type ReceiptVerificationRequest = z.infer<typeof ReceiptVerificationRequestSchema>;

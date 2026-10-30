@@ -118,14 +118,57 @@ export function canonicalizeJson(obj: any): string {
 }
 
 /**
+ * Generates a single-use URL capability bootstrap code (high entropy, URL-safe).
+ */
+export function generateBootstrapCode(): string {
+  return crypto.randomBytes(24).toString("base64url");
+}
+
+/**
+ * Computes the SHA-256 hash of a single-use bootstrap code for safe at-rest storage.
+ */
+export function hashBootstrapCode(code: string): string {
+  return crypto.createHash("sha256").update(code.trim()).digest("hex");
+}
+
+/**
+ * Generates an opaque session token stored exclusively in HttpOnly cookies.
+ */
+export function generateSessionToken(): string {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+/**
+ * Computes the SHA-256 hash of an opaque session token for safe at-rest verification.
+ */
+export function hashSessionToken(token: string): string {
+  return crypto.createHash("sha256").update(token.trim()).digest("hex");
+}
+
+/**
+ * Generates an unguessable recovery token for post-revocation purge retries.
+ */
+export function generatePurgeRecoveryToken(): string {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+/**
+ * Computes the SHA-256 hash of a purge recovery token for safe at-rest storage.
+ */
+export function hashPurgeRecoveryToken(token: string): string {
+  return crypto.createHash("sha256").update(token.trim()).digest("hex");
+}
+
+/**
  * Creates an HMAC-SHA256 signature over a canonicalized receipt payload.
  */
 export function signReceiptPayload(
   payload: Record<string, any>,
   secretKeyHex: string,
-  keyId = "wearerkey-audit-key-v1"
+  keyId = "wearerkey-audit-key-v1",
+  signedAtOverride?: string
 ): { signature: string; key_id: string; algorithm: "HMAC-SHA256"; signed_at: string } {
-  const signedAt = new Date().toISOString();
+  const signedAt = signedAtOverride || new Date().toISOString();
   // Clean payload by removing any existing receipt_hmac to prevent circular hashing
   const cleanPayload = { ...payload };
   delete cleanPayload.receipt_hmac;

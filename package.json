@@ -9,6 +9,7 @@
     "dev:api": "pnpm --filter @wearerkey/api dev",
     "dev:web": "pnpm --filter @wearerkey/web dev",
     "dev": "pnpm --parallel --filter @wearerkey/api --filter @wearerkey/web dev",
+    "start": "pnpm --filter @wearerkey/api start",
     "build": "pnpm --recursive run build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

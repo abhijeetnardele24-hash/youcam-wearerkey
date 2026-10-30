@@ -28,44 +28,58 @@ export const WearerRoomPage: React.FC = () => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [helperUrl, setHelperUrl] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
   const [showSourcePhoto, setShowSourcePhoto] = useState(false);
 
+  // Single-use capability token: read from route or URL fragment without storing in sessionStorage
   const [token] = useState<string>(() => {
-    let raw = routeToken;
-    if (!raw && typeof window !== 'undefined') {
+    if (routeToken) return routeToken;
+    if (typeof window !== 'undefined') {
       const hash = window.location.hash;
+      if (hash.startsWith('#bootstrap=')) {
+        return hash.substring(11);
+      }
       if (hash.startsWith('#token=')) {
-        raw = hash.substring(7);
-      } else if (hash.startsWith('#') && hash.length > 10) {
-        raw = hash.substring(1);
+        return hash.substring(7);
       }
-      if (!raw) {
-        const params = new URLSearchParams(window.location.search);
-        raw = params.get('token') || undefined;
+      if (hash.startsWith('#') && hash.length > 10) {
+        return hash.substring(1);
       }
     }
-    if (raw) {
-      try {
-        sessionStorage.setItem('wearerkey_wearer_token', raw);
-      } catch {}
-      return raw;
-    }
-    try {
-      return sessionStorage.getItem('wearerkey_wearer_token') || '';
-    } catch {
-      return '';
-    }
+    return '';
   });
 
   useEffect(() => {
-    if (token) {
-      api.bootstrap(token, 'wearer').catch(() => {});
-      if (window.history.replaceState) {
-        window.history.replaceState(null, '', '/wearer');
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      let code = '';
+      if (hash.startsWith('#bootstrap=')) {
+        code = hash.substring(11);
+      } else if (hash.startsWith('#token=')) {
+        code = hash.substring(7);
+      }
+      if (code) {
+        // Immediately remove capability code from browser address bar
+        if (window.history.replaceState) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+        api.bootstrap(code, 'wearer')
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ['wearer-session'] });
+          })
+          .catch((err: any) => {
+            if (err?.statusCode === 409 || err?.error === 'BOOTSTRAP_CODE_ALREADY_USED') {
+              setBootstrapError('This capability link has already been redeemed. For your privacy, single-use bootstrap links cannot be replayed.');
+            } else {
+              setBootstrapError(err?.message || 'Bootstrap authentication failed.');
+            }
+          });
+      } else if (token) {
+        api.bootstrap(token, 'wearer').catch(() => {});
       }
     }
-  }, [token]);
+  }, [token, queryClient]);
 
   // Handle ESC key for modal
   useEffect(() => {
@@ -85,13 +99,12 @@ export const WearerRoomPage: React.FC = () => {
     refetch,
   } = useQuery({
     queryKey: ['wearer-session', token],
-    queryFn: () => api.getWearerSession(token),
-    enabled: !!token,
+    queryFn: () => api.getWearerSession(token || undefined),
     refetchInterval: 3000,
   });
 
   const generateHelperLinkMutation = useMutation({
-    mutationFn: () => api.createHelperLink(token),
+    mutationFn: () => api.createHelperLink(token || undefined),
     onSuccess: (data) => {
       setHelperUrl(data.helper_url);
       setActionError(null);
@@ -101,11 +114,22 @@ export const WearerRoomPage: React.FC = () => {
     },
   });
 
+  const retryPurgeMutation = useMutation({
+    mutationFn: () => api.retryPurge(token || undefined),
+    onSuccess: () => {
+      setActionError(null);
+      refetch();
+    },
+    onError: (err: any) => {
+      setActionError(err?.message || 'Purge retry failed.');
+    },
+  });
+
   const revokeMutation = useMutation({
-    mutationFn: () => api.revokeSession(token),
+    mutationFn: () => api.revokeSession(token || undefined),
     onSuccess: () => {
       setIsRevokeModalOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['wearer-session', token] });
+      refetch();
     },
     onError: (err: any) => {
       setIsRevokeModalOpen(false);
@@ -122,8 +146,7 @@ export const WearerRoomPage: React.FC = () => {
   };
 
   const handleDecide = async (proposalId: string, decision: Decision, note?: string) => {
-    if (!token) return;
-    await api.decideProposal(token, proposalId, { decision, note });
+    await api.decideProposal(token || undefined, proposalId, { decision, note });
     queryClient.invalidateQueries({ queryKey: ['wearer-session', token] });
   };
 
@@ -132,6 +155,24 @@ export const WearerRoomPage: React.FC = () => {
       <div className="max-w-4xl mx-auto px-4 py-16 text-center">
         <div className="w-10 h-10 rounded-full border-4 border-wearer border-t-transparent animate-spin mx-auto mb-4" />
         <p className="text-sm font-serif font-bold text-ink">Opening Private Wearer Room...</p>
+      </div>
+    );
+  }
+
+  if (bootstrapError) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-16 text-center">
+        <ShieldAlert className="w-12 h-12 text-rust mx-auto mb-3" />
+        <h2 className="font-serif text-xl font-bold text-ink mb-2">Capability Link Redeemed</h2>
+        <p className="text-xs text-ink-muted mb-6 leading-relaxed">
+          {bootstrapError}
+        </p>
+        <Link
+          to="/create"
+          className="inline-block px-4 py-2 bg-wearer text-white text-xs font-semibold rounded hover:bg-wearer-dark transition-colors"
+        >
+          Create New Pass
+        </Link>
       </div>
     );
   }
@@ -150,6 +191,38 @@ export const WearerRoomPage: React.FC = () => {
         >
           Create New Pass
         </Link>
+      </div>
+    );
+  }
+
+  if (session.status === 'REVOKED') {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-6">
+        <div className="parcel-card p-8 bg-white border border-stone space-y-4">
+          <ShieldAlert className="w-12 h-12 text-rust mx-auto" />
+          <h1 className="font-serif text-2xl font-bold text-ink">Try-On Pass Revoked</h1>
+          <p className="text-xs text-ink-muted max-w-md mx-auto leading-relaxed">
+            All local access credentials and preview buffers have been terminated. Remote provider deletion has been requested.
+          </p>
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link
+              to="/receipt"
+              className="px-4 py-2 bg-wearer text-white rounded text-xs font-semibold hover:bg-wearer-dark transition-colors flex items-center gap-1.5"
+            >
+              <FileText className="w-4 h-4" />
+              <span>View Signed Audit Receipt</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => retryPurgeMutation.mutate()}
+              disabled={retryPurgeMutation.isPending}
+              className="px-4 py-2 border border-stone bg-white text-ink rounded text-xs font-semibold hover:bg-stone-light/40 transition-colors flex items-center gap-1.5"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${retryPurgeMutation.isPending ? 'animate-spin' : ''}`} />
+              <span>Retry Remote Purge</span>
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

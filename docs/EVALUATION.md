@@ -15,7 +15,7 @@ Every claim in the WearerKey submission is backed by reproducible automated suit
 | :--- | :--- | :--- | :--- |
 | **Unit Testing (Domain & Crypto)** | `@wearerkey/domain` | 20 / 20 tests passed | ✅ PASSED |
 | **Provider Contract Testing** | `YouCamClothesProvider` | 11 / 11 tests passed | ✅ PASSED |
-| **End-to-End API Integration** | `@wearerkey/api` | 7 / 7 tests passed | ✅ PASSED |
+| **End-to-End API Integration** | `@wearerkey/api` | 11 / 11 tests passed | ✅ PASSED |
 | **Browser E2E User Journeys** | Playwright (Desktop + Mobile) | 8 / 8 tests passed | ✅ PASSED |
 | **Accessibility (WCAG 2.1 AA)** | Axe-Core (Home, Create, Judge) | 0 violations among tested views | ✅ PASSED |
 | **Security & Secrets Scan** | Git-tracked file scanner | 0 exposed secrets detected | ✅ PASSED |
@@ -47,6 +47,10 @@ Every claim in the WearerKey submission is backed by reproducible automated suit
 - **Capability Token Bootstrap:** `POST /api/auth/bootstrap` exchanges capability token for secure `HttpOnly` cookie.
 - **Tamper-Evident Receipt Verification:** `POST /api/receipts/verify` validates genuine HMAC-SHA256 signature and successfully rejects modified payloads.
 - **SSE Authorization:** Verifies that `/api/events` rejects unauthenticated connections with HTTP 401.
+- **P0-B Single-Use Bootstrap Protection:** Enforces single-use bootstrap code redemption and rejects replayed codes with HTTP 409 Conflict.
+- **P0-A Post-Revocation Purge Recovery:** Verifies purge retry and receipt endpoints remain reachable after revocation via `requirePurgeRecoveryAuth`.
+- **P0-C Secret & Token Redaction:** Asserts that logger redacts secrets, capability tokens, and cookies from output logs.
+- **SSRF Domain Restriction:** Restricts remote image proxying strictly to allowlisted YouCam domains.
 
 ### 2.4 Browser E2E & Accessibility Tests (`tests/e2e/e2e-journey.spec.ts`)
 - Executed on both **Desktop Chrome (1280x720)** and **Mobile Viewport (390x844)**.
@@ -78,3 +82,4 @@ Every claim in the WearerKey submission is backed by reproducible automated suit
 2. **Public Cloud Deployment:** Requires cloud hosting deployment (Render/Railway/Fly.io/Vercel) to produce a live HTTPS judge URL.
 3. **Demo Video:** Requires a 2-3 minute screen recording following `docs/VIDEO_STORYBOARD.md`.
 4. **Devpost Final Form:** Form submission on Devpost portal.
+

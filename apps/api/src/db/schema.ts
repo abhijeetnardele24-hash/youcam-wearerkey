@@ -1,10 +1,28 @@
 import { pgTable, text, varchar, timestamp, integer, boolean, json, uuid, serial } from "drizzle-orm/pg-core";
+import type { StructuredDeletionError } from "@wearerkey/contracts";
 
 export const relaySessions = pgTable("relay_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
   status: varchar("status", { length: 32 }).notNull().default("DRAFT"),
+
+  // Single-use bootstrap codes
+  wearerBootstrapCodeHash: varchar("wearer_bootstrap_code_hash", { length: 64 }),
+  wearerBootstrapRedeemedAt: timestamp("wearer_bootstrap_redeemed_at", { withTimezone: true }),
+  helperBootstrapCodeHash: varchar("helper_bootstrap_code_hash", { length: 64 }),
+  helperBootstrapRedeemedAt: timestamp("helper_bootstrap_redeemed_at", { withTimezone: true }),
+
+  // Opaque Session Credentials (only the SHA-256 hash is stored; raw token placed in HttpOnly cookie)
+  wearerSessionTokenHash: varchar("wearer_session_token_hash", { length: 64 }),
+  helperSessionTokenHash: varchar("helper_session_token_hash", { length: 64 }),
+
+  // Legacy capability token hash compatibility
   wearerTokenHash: varchar("wearer_token_hash", { length: 64 }).notNull(),
   helperTokenHash: varchar("helper_token_hash", { length: 64 }).notNull(),
+
+  // Narrow post-revocation purge recovery capability
+  purgeRecoveryTokenHash: varchar("purge_recovery_token_hash", { length: 64 }),
+  purgeRecoveryExpiresAt: timestamp("purge_recovery_expires_at", { withTimezone: true }),
+
   consentVersion: varchar("consent_version", { length: 32 }).notNull().default("2026-10-30-v1"),
   allowedCategories: json("allowed_categories").$type<string[]>().notNull(),
   maxProposals: integer("max_proposals").notNull().default(3),
@@ -12,9 +30,14 @@ export const relaySessions = pgTable("relay_sessions", {
   giftMode: boolean("gift_mode").notNull().default(false),
   sourceFileIdCiphertext: text("source_file_id_ciphertext"),
   sourceContentHash: varchar("source_content_hash", { length: 64 }),
+
+  // Deletion state model
   deletionStatus: varchar("deletion_status", { length: 32 }).notNull().default("NOT_REQUESTED"),
   sourceDeletionStatus: varchar("source_deletion_status", { length: 32 }).notNull().default("NOT_REQUESTED"),
   deletionError: text("deletion_error"),
+  deletionErrors: json("deletion_errors").$type<StructuredDeletionError[]>(),
+  signedReceiptJson: text("signed_receipt_json"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
