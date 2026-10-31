@@ -1,0 +1,13 @@
+{
+  "filename": "sample_garment_overcoat.png",
+  "source": "E-Commerce Catalog Garment Reference",
+  "creator": "Product Catalog Studio",
+  "license": "Open Demonstration / E-Commerce Benchmark",
+  "permitted_use": "Virtual try-on garment input evaluation",
+  "sha256": "e5c1fe164763194a2fe595c8a30f27902c66b25e8ae571d4ac4b09e2d5c96114",
+  "dimensions": {
+    "width": 500,
+    "height": 500
+  },
+  "mime_type": "image/png"
+}

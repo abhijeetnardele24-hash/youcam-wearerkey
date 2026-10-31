@@ -42,6 +42,8 @@ async function initSchema(pglite: PGlite) {
       helper_bootstrap_redeemed_at TIMESTAMPTZ,
       wearer_session_token_hash VARCHAR(64),
       helper_session_token_hash VARCHAR(64),
+      revoked_wearer_session_token_hash VARCHAR(64),
+      revoked_helper_session_token_hash VARCHAR(64),
       wearer_token_hash VARCHAR(64),
       helper_token_hash VARCHAR(64),
       purge_recovery_token_hash VARCHAR(64),

@@ -73,6 +73,33 @@ export const HelperRoomPage: React.FC = () => {
     refetchInterval: 3000,
   });
 
+  // Real-time server-sent events with background polling fallback (connects once session is authenticated)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.EventSource || !session) return;
+
+    const eventSource = new EventSource('/api/helper/events', { withCredentials: true });
+
+    eventSource.addEventListener('PROPOSAL_CREATED', () => {
+      queryClient.invalidateQueries({ queryKey: ['helper-session'] });
+    });
+    eventSource.addEventListener('TRYON_COMPLETED', () => {
+      queryClient.invalidateQueries({ queryKey: ['helper-session'] });
+    });
+    eventSource.addEventListener('DECISION_RECORDED', () => {
+      queryClient.invalidateQueries({ queryKey: ['helper-session'] });
+    });
+    eventSource.addEventListener('SESSION_REVOKED', () => {
+      queryClient.invalidateQueries({ queryKey: ['helper-session'] });
+    });
+    eventSource.addEventListener('SESSION_EXPIRED', () => {
+      queryClient.invalidateQueries({ queryKey: ['helper-session'] });
+    });
+
+    return () => {
+      eventSource.close();
+    };
+  }, [queryClient, !!session]);
+
   const generateTryOnMutation = useMutation({
     mutationFn: (proposalId: string) => api.generateTryOn(proposalId),
     onSuccess: () => {
@@ -218,12 +245,21 @@ export const HelperRoomPage: React.FC = () => {
   }
 
   if (error || !session) {
+    const isRevokedError =
+      (error as any)?.statusCode === 410 ||
+      (error as any)?.error === 'SESSION_REVOKED' ||
+      (error as any)?.message?.toLowerCase().includes('revoked');
+
     return (
       <div className="max-w-lg mx-auto px-4 py-16 text-center">
         <EyeOff className="w-12 h-12 text-rust mx-auto mb-3" />
-        <h2 className="font-serif text-xl font-bold text-ink mb-2">Invalid or Expired Helper Pass</h2>
+        <h2 className="font-serif text-xl font-bold text-ink mb-2">
+          {isRevokedError ? 'Try-On Pass Revoked by Wearer' : 'Invalid or Expired Helper Pass'}
+        </h2>
         <p className="text-xs text-ink-muted mb-6">
-          {(error as any)?.message || 'This helper room link has expired or the session was revoked.'}
+          {isRevokedError
+            ? 'The wearer has ended this shopping collaboration. No further garment proposals can be submitted, and all session data has been purged according to the WearerKey privacy protocol.'
+            : (error as any)?.message || 'This helper room link has expired or the session was revoked.'}
         </p>
         <Link
           to="/"

@@ -21,7 +21,7 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        run: npm install -g pnpm
+        run: npm install -g pnpm@9.15.4
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -29,8 +29,8 @@ jobs:
       - name: Typecheck Monorepo
         run: pnpm typecheck
 
-      - name: Run Vitest Unit & Integration Tests
-        run: pnpm test
+      - name: Run Vitest Unit & Integration Tests (JSON report)
+        run: npx vitest run --reporter=json --outputFile=docs/vitest-results.json
 
       - name: Build Monorepo (Contracts, Domain, API, Web)
         run: pnpm build
@@ -38,11 +38,42 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright E2E & Axe Accessibility Checks
-        run: npx playwright test
+      - name: Run Playwright E2E & Axe Accessibility Checks (JSON report)
+        run: npx playwright test --reporter=json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: docs/playwright-results.json
 
       - name: Run Security & Secret Scan
         run: npx tsx scripts/security-scan.ts
 
       - name: Validate Truthfulness & Claims
-        run: npx tsx scripts/check-claims.ts
+        run: npx tsx scripts/check-claims.ts --strict-sha
+
+      - name: Build Docker Container
+        run: docker build -t wearerkey:ci .
+
+      - name: Run Docker Smoke Check
+        run: |
+          docker run -d --name wearerkey-test -p 3000:3000 \
+            -e YOUCAM_PROVIDER_MODE=DEMO_FIXTURE \
+            -e PROVIDER_ID_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+            -e SESSION_COOKIE_SECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210 \
+            -e RECEIPT_SIGNING_KEY=11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff \
+            -e ENCRYPTION_KEY_HEX=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+            wearerkey:ci
+          sleep 4
+          curl -f http://127.0.0.1:3000/api/health || (docker logs wearerkey-test && exit 1)
+          docker rm -f wearerkey-test
+
+      - name: Upload Verification Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-evidence
+          path: |
+            docs/verification-results.json
+            docs/vitest-results.json
+            docs/playwright-results.json
+            docs/live-youcam-receipt.json
+            docs/deployment-receipt.json
+            docs/evidence-index.json

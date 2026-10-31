@@ -38,3 +38,4 @@ Because **Technological Implementation** serves as the primary tie-breaker, genu
    Judges open Developer Tools on the Helper pane to observe that no network calls retrieve or contain wearer images.
 3. **Auditable Deletion Verification:**
    Judges trigger session revocation and inspect the tamper-evident HMAC assertion proving in-memory purge and remote deletion requests.
+

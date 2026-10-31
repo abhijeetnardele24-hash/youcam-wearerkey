@@ -2,30 +2,63 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execSync } from "node:child_process";
-import sharp from "sharp";
 import { YouCamClothesProvider } from "../apps/api/src/providers/youcam/youcam-provider.js";
 import type { SanitizedImage } from "../apps/api/src/services/image-sanitizer.js";
 import { calculateContentHash } from "../packages/domain/src/crypto.js";
 
-interface DeletionVerificationRecord {
+/**
+ * Pure-JavaScript fast parser for PNG and JPEG headers.
+ * Avoids native C++ sharp dependency issues in scripts across diverse runner environments.
+ */
+export function parseImageDimensions(buffer: Buffer): { format: "png" | "jpeg"; width: number; height: number } | null {
+  if (buffer.length > 24 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    return {
+      format: "png",
+      width: buffer.readUInt32BE(16),
+      height: buffer.readUInt32BE(20)
+    };
+  }
+  if (buffer.length > 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    while (offset < buffer.length - 8) {
+      if (buffer[offset] !== 0xff) break;
+      const marker = buffer[offset + 1];
+      if (marker === 0xc0 || marker === 0xc2) {
+        return {
+          format: "jpeg",
+          height: buffer.readUInt16BE(offset + 5),
+          width: buffer.readUInt16BE(offset + 7)
+        };
+      }
+      const length = buffer.readUInt16BE(offset + 2);
+      offset += 2 + length;
+    }
+  }
+  return null;
+}
+
+export interface DeletionVerificationRecord {
   task_deletion: "CONFIRMED" | "FAILED" | "NOT_REQUESTED";
   source_deletion: "CONFIRMED" | "FAILED" | "NOT_REQUESTED";
   garment_deletion: "CONFIRMED" | "FAILED" | "NOT_REQUESTED";
   all_deletions_confirmed: boolean;
 }
 
-interface FixtureProvenanceRecord {
+export interface FixtureProvenanceRecord {
   person_fixture_type: "LICENSED_PHOTOGRAPH" | "USER_PROVIDED_PHOTOGRAPH" | "SYNTHETIC_FALLBACK";
   garment_fixture_type: "LICENSED_PHOTOGRAPH" | "USER_PROVIDED_PHOTOGRAPH" | "SYNTHETIC_FALLBACK";
   license_or_provenance: string;
+  person_sha256?: string;
+  garment_sha256?: string;
+  manifest_verified: boolean;
 }
 
-interface SmokeReceipt {
+export interface SmokeReceipt {
   evaluated_commit_sha: string;
   provider_mode: "LIVE_YOUCAM" | "DEMO_FIXTURE" | "RECORDED_LIVE_RESULT";
   endpoint: string;
   timestamp: string;
-  connectivity_status: "CONNECTED" | "BLOCKED_MISSING_KEY" | "AUTH_FAILED" | "FIXTURE_REJECTED" | "OFFLINE";
+  connectivity_status: "CONNECTED" | "BLOCKED_MISSING_KEY" | "AUTH_FAILED" | "FIXTURE_REJECTED" | "OFFLINE" | "TIMEOUT";
   http_status: number;
   live_execution_verified: boolean;
   generation_verified: boolean;
@@ -40,7 +73,7 @@ interface SmokeReceipt {
   error?: string;
 }
 
-function getCommitSha(): string {
+export function getCommitSha(): string {
   try {
     return execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
   } catch {
@@ -48,12 +81,116 @@ function getCommitSha(): string {
   }
 }
 
-async function runSmoke() {
-  const args = process.argv.slice(2);
-  const requireLive = args.includes("--require-live") || process.env.REQUIRE_LIVE === "1";
-  const apiKey = process.env.YOUCAM_API_KEY;
-  const baseUrl = process.env.YOUCAM_BASE_URL || "https://yce-api-01.makeupar.com";
-  const commitSha = getCommitSha();
+export interface FixtureValidationResult {
+  valid: boolean;
+  error?: string;
+  manifest?: any;
+  sha256?: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  buffer?: Buffer;
+}
+
+/**
+ * Validates that an image fixture is an authentic, photographic raster image
+ * accompanied by a matching .provenance.json manifest. Rejects synthetic SVGs,
+ * placeholders, or corrupted/mismatched files.
+ */
+export async function validateFixture(fixturePath: string): Promise<FixtureValidationResult> {
+  if (!fixturePath || !fs.existsSync(fixturePath)) {
+    return { valid: false, error: `Fixture file does not exist: ${fixturePath}` };
+  }
+
+  const ext = path.extname(fixturePath).toLowerCase();
+  if (ext === ".svg") {
+    return { valid: false, error: "Synthetic SVGs and vector silhouettes are strictly rejected." };
+  }
+
+  const buffer = fs.readFileSync(fixturePath);
+  if (buffer.length < 10000) {
+    return { valid: false, error: `Fixture too small (${buffer.length} bytes). Minimum photographic raster size is 10KB.` };
+  }
+
+  // Verify raster format & dimensions
+  const parsed = parseImageDimensions(buffer);
+  if (!parsed) {
+    return { valid: false, error: "Failed to decode image raster. Must be valid PNG or JPEG." };
+  }
+
+  const { width, height, format } = parsed;
+  if (width < 400 || height < 400) {
+    return { valid: false, error: `Fixture dimensions too small (${width}x${height}). Minimum is 400x400.` };
+  }
+
+  // Verify companion .provenance.json manifest
+  const manifestCandidates = [
+    `${fixturePath}.provenance.json`,
+    path.join(path.dirname(fixturePath), `${path.basename(fixturePath, ext)}.provenance.json`)
+  ];
+
+  let manifestPath: string | null = null;
+  for (const candidate of manifestCandidates) {
+    if (fs.existsSync(candidate)) {
+      manifestPath = candidate;
+      break;
+    }
+  }
+
+  if (!manifestPath) {
+    return {
+      valid: false,
+      error: `Missing required machine-readable fixture provenance manifest (.provenance.json) for ${path.basename(fixturePath)}`
+    };
+  }
+
+  let manifest: any;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+  } catch (err: any) {
+    return { valid: false, error: `Malformed provenance JSON manifest: ${err.message}` };
+  }
+
+  const calculatedHash = crypto.createHash("sha256").update(buffer).digest("hex");
+  if (!manifest.sha256 || manifest.sha256.toLowerCase() !== calculatedHash.toLowerCase()) {
+    return {
+      valid: false,
+      error: `Provenance sha256 mismatch for ${path.basename(fixturePath)}. Manifest: ${manifest.sha256}, actual: ${calculatedHash}`
+    };
+  }
+
+  if (!manifest.license || !manifest.source) {
+    return { valid: false, error: `Provenance manifest missing required license or source attributes.` };
+  }
+
+  return {
+    valid: true,
+    manifest,
+    sha256: calculatedHash,
+    width,
+    height,
+    mimeType: format === "png" ? "image/png" : "image/jpeg",
+    buffer
+  };
+}
+
+export interface SmokeOptions {
+  requireLive?: boolean;
+  apiKey?: string;
+  baseUrl?: string;
+  personFixturePath?: string;
+  garmentFixturePath?: string;
+  commitSha?: string;
+  customProvider?: YouCamClothesProvider;
+  docsDir?: string;
+}
+
+export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt> {
+  const requireLive = options.requireLive ?? (process.argv.includes("--require-live") || process.env.REQUIRE_LIVE === "1");
+  const apiKey = options.apiKey ?? process.env.YOUCAM_API_KEY;
+  const baseUrl = options.baseUrl ?? process.env.YOUCAM_BASE_URL ?? "https://yce-api-01.makeupar.com";
+  const commitSha = options.commitSha ?? getCommitSha();
+  const docsDir = options.docsDir ?? path.resolve(process.cwd(), "docs");
   const startTime = Date.now();
 
   console.log(`[WearerKey Live Smoke] Initiating YouCam Clothes V4 live smoke suite...`);
@@ -61,7 +198,6 @@ async function runSmoke() {
   console.log(`  Commit SHA: ${commitSha}`);
   console.log(`  Require Live: ${requireLive}`);
 
-  const docsDir = path.resolve(process.cwd(), "docs");
   if (!fs.existsSync(docsDir)) {
     fs.mkdirSync(docsDir, { recursive: true });
   }
@@ -93,49 +229,33 @@ async function runSmoke() {
 
     if (requireLive) {
       console.error(`[WearerKey Live Smoke] FAIL-CLOSED: --require-live was requested but YOUCAM_API_KEY is absent.`);
-      process.exit(1);
+      if (!options.customProvider) process.exit(1);
     }
-    return;
+    return receipt;
   }
 
   // 2. Locate and validate photographic fixtures
   console.log(`[WearerKey Live Smoke] Resolving test image fixtures...`);
 
-  let personFixturePath = process.env.LIVE_SMOKE_PERSON_FIXTURE;
-  let garmentFixturePath = process.env.LIVE_SMOKE_GARMENT_FIXTURE;
-  let licenseInfo = "Unsplash Open License / User-supplied test fixture";
+  let personFixturePath = options.personFixturePath ?? process.env.LIVE_SMOKE_PERSON_FIXTURE;
+  let garmentFixturePath = options.garmentFixturePath ?? process.env.LIVE_SMOKE_GARMENT_FIXTURE;
 
-  // Check default sample locations if env vars not provided
-  if (!personFixturePath || !fs.existsSync(personFixturePath)) {
-    const candidatePath = path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png");
-    if (fs.existsSync(candidatePath)) {
-      personFixturePath = candidatePath;
-    }
+  if (!personFixturePath) {
+    const candidate = path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png");
+    if (fs.existsSync(candidate)) personFixturePath = candidate;
   }
 
-  if (!garmentFixturePath || !fs.existsSync(garmentFixturePath)) {
-    const candidatePath = path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png");
-    if (fs.existsSync(candidatePath)) {
-      garmentFixturePath = candidatePath;
-    }
+  if (!garmentFixturePath) {
+    const candidate = path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png");
+    if (fs.existsSync(candidate)) garmentFixturePath = candidate;
   }
 
-  // Enforce photographic fixture requirement in live mode
-  const isPhotographic = (p?: string): boolean => {
-    if (!p || !fs.existsSync(p)) return false;
-    const ext = path.extname(p).toLowerCase();
-    if (ext === ".svg") return false;
-    const stat = fs.statSync(p);
-    return stat.size > 5000; // Realistic photographic raster image > 5KB
-  };
+  const personCheck = await validateFixture(personFixturePath || "");
+  const garmentCheck = await validateFixture(garmentFixturePath || "");
 
-  const hasPhotographicPerson = isPhotographic(personFixturePath);
-  const hasPhotographicGarment = isPhotographic(garmentFixturePath);
-
-  if (requireLive && (!hasPhotographicPerson || !hasPhotographicGarment)) {
-    console.error(`[WearerKey Live Smoke] FAIL-CLOSED: Genuine photographic fixtures required for live verification.`);
-    console.error(`  Synthetic silhouette / text SVGs are strictly rejected for live eligibility verification.`);
-    console.error(`  Provide valid paths via LIVE_SMOKE_PERSON_FIXTURE and LIVE_SMOKE_GARMENT_FIXTURE.`);
+  if (!personCheck.valid || !garmentCheck.valid) {
+    const errorDetail = `Person check: ${personCheck.error || "OK"}; Garment check: ${garmentCheck.error || "OK"}`;
+    console.error(`[WearerKey Live Smoke] FAIL-CLOSED: Fixture validation failed. ${errorDetail}`);
 
     const receipt: SmokeReceipt = {
       evaluated_commit_sha: commitSha,
@@ -149,61 +269,79 @@ async function runSmoke() {
       deletion_verified: false,
       model_name: "YouCam AI Clothes V4",
       api_family: "AI_CLOTHES_V4",
-      reason: "Live execution rejected: photographic person and garment fixtures required. Synthetic silhouettes are rejected."
+      reason: `Live execution rejected: photographic person and garment fixtures with matching .provenance.json required. ${errorDetail}`,
+      error: errorDetail
     };
 
     fs.writeFileSync(
       path.join(docsDir, "live-youcam-receipt.json"),
       JSON.stringify(receipt, null, 2)
     );
-    process.exit(1);
+
+    if (requireLive && !options.customProvider) {
+      process.exit(1);
+    }
+    return receipt;
   }
 
-  const personBuffer = fs.readFileSync(personFixturePath!);
-  const garmentBuffer = fs.readFileSync(garmentFixturePath!);
-
-  const sourceMeta = await sharp(personBuffer).metadata();
-  const garmentMeta = await sharp(garmentBuffer).metadata();
-
   const sourceImage: SanitizedImage = {
-    buffer: personBuffer,
-    mimeType: sourceMeta.format === "png" ? "image/png" : "image/jpeg",
-    width: sourceMeta.width || 600,
-    height: sourceMeta.height || 800,
-    byteSize: personBuffer.length,
-    contentHash: calculateContentHash(personBuffer)
+    buffer: personCheck.buffer!,
+    mimeType: personCheck.mimeType as any,
+    width: personCheck.width!,
+    height: personCheck.height!,
+    byteSize: personCheck.buffer!.length,
+    contentHash: calculateContentHash(personCheck.buffer!)
   };
 
   const garmentImage: SanitizedImage = {
-    buffer: garmentBuffer,
-    mimeType: garmentMeta.format === "png" ? "image/png" : "image/jpeg",
-    width: garmentMeta.width || 500,
-    height: garmentMeta.height || 500,
-    byteSize: garmentBuffer.length,
-    contentHash: calculateContentHash(garmentBuffer)
+    buffer: garmentCheck.buffer!,
+    mimeType: garmentCheck.mimeType as any,
+    width: garmentCheck.width!,
+    height: garmentCheck.height!,
+    byteSize: garmentCheck.buffer!.length,
+    contentHash: calculateContentHash(garmentCheck.buffer!)
   };
 
   const provenance: FixtureProvenanceRecord = {
     person_fixture_type: "LICENSED_PHOTOGRAPH",
     garment_fixture_type: "LICENSED_PHOTOGRAPH",
-    license_or_provenance: licenseInfo
+    license_or_provenance: `${personCheck.manifest.license} / ${garmentCheck.manifest.license}`,
+    person_sha256: personCheck.sha256,
+    garment_sha256: garmentCheck.sha256,
+    manifest_verified: true
   };
 
   console.log(`[WearerKey Live Smoke] Executing live Clothes V4 pipeline...`);
-  const provider = new YouCamClothesProvider(baseUrl, apiKey);
+  const provider = options.customProvider ?? new YouCamClothesProvider(baseUrl, apiKey);
+
+  // Resource tracking for fail-closed cleanup in finally block
+  let uploadedSourceFileId: string | null = null;
+  let uploadedGarmentFileId: string | null = null;
+  let createdTaskId: string | null = null;
+  let generationSucceeded = false;
+  let latency = 0;
+  let pollStatus: any = null;
+  let caughtError: any = null;
+
+  // Deletion tracking
+  let taskDelStatus: "CONFIRMED" | "FAILED" | "NOT_REQUESTED" = "NOT_REQUESTED";
+  let srcDelStatus: "CONFIRMED" | "FAILED" | "NOT_REQUESTED" = "NOT_REQUESTED";
+  let garmDelStatus: "CONFIRMED" | "FAILED" | "NOT_REQUESTED" = "NOT_REQUESTED";
 
   try {
     // 3. Upload source reference photo
     console.log(`  1/5 Uploading source reference image to /s2s/v2.0/file...`);
     const sourceFile = await provider.uploadImage(sourceImage, "source");
+    uploadedSourceFileId = sourceFile.fileId;
     console.log(`    Source upload successful (masked ID: ${sourceFile.fileId.slice(0, 4)}...${sourceFile.fileId.slice(-4)})`);
 
     // 4. Upload garment photo
     console.log(`  2/5 Uploading garment image to /s2s/v2.0/file...`);
     const garmentFile = await provider.uploadImage(garmentImage, "garment");
+    uploadedGarmentFileId = garmentFile.fileId;
     console.log(`    Garment upload successful (masked ID: ${garmentFile.fileId.slice(0, 4)}...${garmentFile.fileId.slice(-4)})`);
 
-    // 5. Dispatch task
+    // 5. Dispatch Clothes V4 task
     console.log(`  3/5 Submitting Clothes V4 task to /s2s/v2.0/task/cloth-v4...`);
     const task = await provider.createTask({
       srcFileId: sourceFile.fileId,
@@ -211,107 +349,117 @@ async function runSmoke() {
       garmentCategory: "outer",
       filterMultiPerson: "strict"
     });
+    createdTaskId = task.taskId;
     console.log(`    Task created (masked ID: ${task.taskId.slice(0, 4)}...${task.taskId.slice(-4)})`);
 
     // 6. Poll for completion
     console.log(`  4/5 Polling task status...`);
-    const status = await provider.pollTask(task.taskId, 90000);
-    const latency = Date.now() - startTime;
-    console.log(`    Task terminal status: ${status.status} (${latency}ms)`);
+    pollStatus = await provider.pollTask(task.taskId, 90000);
+    latency = Date.now() - startTime;
+    console.log(`    Task terminal status: ${pollStatus.status} (${latency}ms)`);
 
-    const generationSucceeded = status.status === "SUCCEEDED" && !!status.resultUrl;
-
-    if (!generationSucceeded && requireLive) {
-      console.error(`[WearerKey Live Smoke] FAIL-CLOSED: Generation failed on provider side: ${status.errorMessage || status.errorCode}`);
-      process.exit(1);
+    generationSucceeded = pollStatus.status === "SUCCEEDED" && !!pollStatus.resultUrl;
+  } catch (err: any) {
+    caughtError = err;
+    console.error(`[WearerKey Live Smoke] Exception during execution: ${err.message}`);
+  } finally {
+    // Fail-Closed Cleanup: Always delete remote task and files regardless of errors
+    console.log(`  5/5 Executing fail-closed resource deletions...`);
+    if (createdTaskId) {
+      try {
+        const taskDel = await provider.deleteTask(createdTaskId);
+        taskDelStatus = taskDel.confirmed ? "CONFIRMED" : "FAILED";
+      } catch {
+        taskDelStatus = "FAILED";
+      }
     }
-
-    // 7. Execute Deletions (Source file, garment file, task)
-    console.log(`  5/5 Executing resource deletions...`);
-    const taskDel = await provider.deleteTask(task.taskId);
-    const srcDel = await provider.deleteFile(sourceFile.fileId);
-    const garmDel = await provider.deleteFile(garmentFile.fileId);
-
-    const taskDelStatus = taskDel.confirmed ? "CONFIRMED" : "FAILED";
-    const srcDelStatus = srcDel ? "CONFIRMED" : "FAILED";
-    const garmDelStatus = garmDel ? "CONFIRMED" : "FAILED";
-    const allDeletionsConfirmed = taskDel.confirmed && srcDel && garmDel;
-
+    if (uploadedSourceFileId) {
+      try {
+        const srcDel = await provider.deleteFile(uploadedSourceFileId);
+        srcDelStatus = srcDel ? "CONFIRMED" : "FAILED";
+      } catch {
+        srcDelStatus = "FAILED";
+      }
+    }
+    if (uploadedGarmentFileId) {
+      try {
+        const garmDel = await provider.deleteFile(uploadedGarmentFileId);
+        garmDelStatus = garmDel ? "CONFIRMED" : "FAILED";
+      } catch {
+        garmDelStatus = "FAILED";
+      }
+    }
     console.log(`    Task deletion: ${taskDelStatus}`);
     console.log(`    Source deletion: ${srcDelStatus}`);
     console.log(`    Garment deletion: ${garmDelStatus}`);
-
-    const saltedTaskIdHash = crypto
-      .createHash("sha256")
-      .update(task.taskId + ":" + commitSha)
-      .digest("hex")
-      .slice(0, 16);
-
-    const receipt: SmokeReceipt = {
-      evaluated_commit_sha: commitSha,
-      provider_mode: "LIVE_YOUCAM",
-      endpoint: baseUrl,
-      timestamp: new Date().toISOString(),
-      connectivity_status: "CONNECTED",
-      http_status: 200,
-      live_execution_verified: generationSucceeded,
-      generation_verified: generationSucceeded,
-      deletion_verified: allDeletionsConfirmed,
-      model_name: "YouCam AI Clothes V4",
-      api_family: "AI_CLOTHES_V4",
-      latency_ms: latency,
-      task_id_hash: saltedTaskIdHash,
-      deletion_breakdown: {
-        task_deletion: taskDelStatus,
-        source_deletion: srcDelStatus,
-        garment_deletion: garmDelStatus,
-        all_deletions_confirmed: allDeletionsConfirmed
-      },
-      fixture_provenance: provenance,
-      reason: generationSucceeded
-        ? "Live YouCam Clothes V4 verified end-to-end with authentic photographic fixtures."
-        : `Provider error: ${status.errorMessage}`
-    };
-
-    fs.writeFileSync(
-      path.join(docsDir, "live-youcam-receipt.json"),
-      JSON.stringify(receipt, null, 2)
-    );
-    console.log(`[WearerKey Live Smoke] Live receipt recorded in docs/live-youcam-receipt.json`);
-
-    if (requireLive && (!generationSucceeded || !allDeletionsConfirmed)) {
-      console.error(`[WearerKey Live Smoke] FAIL-CLOSED: Generation or deletion unconfirmed.`);
-      process.exit(1);
-    }
-
-    console.log(`[WearerKey Live Smoke] ALL LIVE CHECKS PASSED.`);
-  } catch (err: any) {
-    console.error(`[WearerKey Live Smoke] Pipeline execution threw exception:`, err.message);
-
-    const receipt: SmokeReceipt = {
-      evaluated_commit_sha: commitSha,
-      provider_mode: "LIVE_YOUCAM",
-      endpoint: baseUrl,
-      timestamp: new Date().toISOString(),
-      connectivity_status: "AUTH_FAILED",
-      http_status: 500,
-      live_execution_verified: false,
-      generation_verified: false,
-      deletion_verified: false,
-      model_name: "YouCam AI Clothes V4",
-      api_family: "AI_CLOTHES_V4",
-      error: `Live YouCam task failed: ${err.message}`
-    };
-
-    fs.writeFileSync(
-      path.join(docsDir, "live-youcam-receipt.json"),
-      JSON.stringify(receipt, null, 2)
-    );
-
-    if (requireLive) {
-      process.exit(1);
-    }
   }
+
+  const allDeletionsConfirmed = taskDelStatus === "CONFIRMED" && srcDelStatus === "CONFIRMED" && garmDelStatus === "CONFIRMED";
+  const saltedTaskIdHash = createdTaskId
+    ? crypto.createHash("sha256").update(createdTaskId + ":" + commitSha).digest("hex").slice(0, 16)
+    : undefined;
+
+  let connectivityStatus: SmokeReceipt["connectivity_status"] = "CONNECTED";
+  let httpStatus = 200;
+
+  if (caughtError) {
+    connectivityStatus = caughtError.message?.includes("timeout") ? "TIMEOUT" : "AUTH_FAILED";
+    httpStatus = 500;
+  } else if (!generationSucceeded) {
+    connectivityStatus = "AUTH_FAILED";
+    httpStatus = 400;
+  }
+
+  const receipt: SmokeReceipt = {
+    evaluated_commit_sha: commitSha,
+    provider_mode: "LIVE_YOUCAM",
+    endpoint: baseUrl,
+    timestamp: new Date().toISOString(),
+    connectivity_status: connectivityStatus,
+    http_status: httpStatus,
+    live_execution_verified: generationSucceeded && allDeletionsConfirmed,
+    generation_verified: generationSucceeded,
+    deletion_verified: allDeletionsConfirmed,
+    model_name: "YouCam AI Clothes V4",
+    api_family: "AI_CLOTHES_V4",
+    latency_ms: latency,
+    task_id_hash: saltedTaskIdHash,
+    deletion_breakdown: {
+      task_deletion: taskDelStatus,
+      source_deletion: srcDelStatus,
+      garment_deletion: garmDelStatus,
+      all_deletions_confirmed: allDeletionsConfirmed
+    },
+    fixture_provenance: provenance,
+    reason: generationSucceeded && allDeletionsConfirmed
+      ? "Live YouCam Clothes V4 verified end-to-end with authentic photographic fixtures."
+      : (caughtError ? caughtError.message : `Provider status: ${pollStatus?.status || "FAILED"}`),
+    ...(caughtError ? { error: caughtError.message } : {})
+  };
+
+  fs.writeFileSync(
+    path.join(docsDir, "live-youcam-receipt.json"),
+    JSON.stringify(receipt, null, 2)
+  );
+  console.log(`[WearerKey Live Smoke] Receipt recorded in docs/live-youcam-receipt.json`);
+
+  if (requireLive && (!generationSucceeded || !allDeletionsConfirmed) && !options.customProvider) {
+    console.error(`[WearerKey Live Smoke] FAIL-CLOSED: Generation or deletion unconfirmed.`);
+    process.exit(1);
+  }
+
+  return receipt;
 }
 
-runSmoke();
+// Execute directly if run as main script
+const isDirectExecution = process.argv[1] && (
+  process.argv[1].endsWith("live-youcam-smoke.ts") ||
+  process.argv[1].endsWith("live-youcam-smoke.js")
+);
+
+if (isDirectExecution) {
+  runSmoke().catch((err) => {
+    console.error("Fatal error running live smoke:", err);
+    process.exit(1);
+  });
+}

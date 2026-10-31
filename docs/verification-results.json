@@ -1,23 +1,25 @@
 {
-  "evaluated_commit_sha": "538a5712c376e0e85ddbb4b9f6beaecf79779f5b",
-  "timestamp": "2026-10-31T05:08:51.685Z",
+  "evaluated_commit_sha": "8b45fa71b71d666cbe01f02158db265aa23d46fa",
+  "timestamp": "2026-10-31T06:48:02.379Z",
   "status": "PASSED",
   "claims_verified": true,
   "verdict": "INTERNAL_COMPLETE_EXTERNAL_ACTION_REQUIRED",
   "tests": {
     "vitest_unit_and_integration": {
-      "total": 50,
-      "passed": 50,
+      "total": 67,
+      "passed": 67,
       "failed": 0,
       "suites": [
+        "check-claims.test.ts",
         "domain.test.ts",
+        "live-youcam-smoke.test.ts",
         "youcam-provider.test.ts",
         "api.test.ts"
       ]
     },
     "playwright_e2e_and_axe": {
-      "total": 8,
-      "passed": 8,
+      "total": 10,
+      "passed": 10,
       "failed": 0,
       "viewports": [
         "Desktop Chrome",
@@ -31,7 +33,9 @@
     "tested_views": [
       "Home Page",
       "Create Pass Page",
-      "Judge Tour Page"
+      "Judge Tour Page",
+      "Wearer Room",
+      "Helper Room"
     ]
   },
   "security": {
@@ -39,12 +43,15 @@
     "constant_time_token_verification": true,
     "server_enforced_privacy_boundary": true,
     "in_memory_sanitization_and_exif_strip": true,
-    "helper_leakage_prevented": true
+    "helper_leakage_prevented": true,
+    "origin_csrf_enforced": true,
+    "bounded_rate_limiting": true
   },
   "provider": {
     "mode": "DEMO_FIXTURE",
     "live_execution_verified": false,
     "api_family": "YouCam AI Clothes V4 (/s2s/v2.0/task/cloth-v4)",
+    "task_deletion_contract": "POST /s2s/v2.0/task/delete",
     "truthful_fixture_separation": true
   }
 }

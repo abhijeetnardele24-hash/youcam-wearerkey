@@ -200,6 +200,37 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
         const host = parsed.hostname.toLowerCase();
         const isProd = config.NODE_ENV === "production";
 
+        // 1. Enforce HTTPS (allow HTTP in dev only for localhost testing)
+        if (isProd && parsed.protocol !== "https:") {
+          return reply.status(403).send({ error: "SSRF_BLOCKED", message: "Only HTTPS result URLs are permitted in production." });
+        }
+
+        // 2. Reject credentials in URL (e.g. https://user:pass@evil.com)
+        if (parsed.username || parsed.password) {
+          return reply.status(403).send({ error: "SSRF_BLOCKED", message: "Result URLs with userinfo credentials are forbidden." });
+        }
+
+        // 3. Reject non-standard ports
+        if (parsed.port && parsed.port !== "443" && !(isProd === false && (parsed.port === "4000" || parsed.port === "5173"))) {
+          return reply.status(403).send({ error: "SSRF_BLOCKED", message: "Non-standard ports are forbidden." });
+        }
+
+        // 4. Reject private / link-local / metadata IP addresses
+        const isPrivateIp = (h: string) => {
+          if (h === "localhost" || h === "127.0.0.1" || h === "::1") return !isProd ? false : true;
+          if (/^10\./.test(h)) return true;
+          if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(h)) return true;
+          if (/^192\.168\./.test(h)) return true;
+          if (/^169\.254\./.test(h)) return true;
+          if (/^fc[0-9a-f]{2}:/i.test(h)) return true;
+          if (/^fe80:/i.test(h)) return true;
+          return false;
+        };
+
+        if (isPrivateIp(host)) {
+          return reply.status(403).send({ error: "SSRF_BLOCKED", message: "Private and internal IP ranges are forbidden." });
+        }
+
         const isAuthorizedHost =
           host === "yce-api-01.makeupar.com" ||
           host.endsWith(".makeupar.com") ||
@@ -207,16 +238,16 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
           (!isProd && (host === "localhost" || host === "127.0.0.1"));
 
         if (!isAuthorizedHost) {
-          req.log.warn({ host }, "Blocked attempt to stream result from unauthorized or private host");
+          req.log.warn({ host }, "Blocked attempt to stream result from unauthorized host");
           return reply.status(403).send({ error: "SSRF_BLOCKED", message: "Result origin domain not allowed by SSRF policy" });
         }
       } catch {
         return reply.status(400).send({ error: "INVALID_RESULT_URL" });
       }
 
-      // Stream from YouCam CDN directly to wearer browser
+      // Stream from YouCam CDN directly to wearer browser with redirection disabled
       try {
-        const streamRes = await request(rawResultUrl, { method: "GET" });
+        const streamRes = await request(rawResultUrl, { method: "GET", maxRedirections: 0 });
         if (streamRes.statusCode >= 200 && streamRes.statusCode < 300) {
           reply.header("Content-Type", streamRes.headers["content-type"] || "image/jpeg");
           reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");

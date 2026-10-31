@@ -289,7 +289,7 @@ export class YouCamClothesProvider implements ClothesTryOnProvider {
   }
 
   /**
-   * Delete remote task using official POST /s2s/v2.0/task/delete
+   * Delete remote task and all associated input files & outputs using official Perfect Corp POST /s2s/v2.0/task/delete
    */
   async deleteTask(taskId: string): Promise<ProviderDeletionResult> {
     try {
@@ -297,52 +297,51 @@ export class YouCamClothesProvider implements ClothesTryOnProvider {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          Accept: "application/json"
         },
         body: JSON.stringify({ task_id: taskId })
       });
 
-      if (res.statusCode === 200 || res.statusCode === 204) {
-        return {
-          taskId,
-          confirmed: true,
-          providerStatus: "DELETED",
-          deletionMode: "GENUINE_PROVIDER_CONFIRMED"
-        };
-      }
-
-      // Fallback to DELETE query path if endpoint is different
-      const fallbackRes = await request(
-        `${this.baseUrl}/s2s/v2.0/task/cloth-v4?task_id=${encodeURIComponent(taskId)}`,
-        {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`
-          }
-        }
-      );
-
-      if (fallbackRes.statusCode === 200 || fallbackRes.statusCode === 204) {
-        return {
-          taskId,
-          confirmed: true,
-          providerStatus: "DELETED",
-          deletionMode: "GENUINE_PROVIDER_CONFIRMED"
-        };
-      }
-
       const bodyText = await res.body.text();
+      let bodyJson: any = null;
+      try {
+        bodyJson = JSON.parse(bodyText);
+      } catch {
+        // malformed / non-JSON response
+      }
+
+      // Official Perfect Corp Task Management contract: HTTP 200 with JSON { "status": 200 }
+      const isConfirmed =
+        res.statusCode === 200 &&
+        (bodyJson?.status === 200 ||
+          bodyJson?.status === "success" ||
+          bodyJson?.status === "SUCCESS" ||
+          bodyJson?.success === true);
+
+      if (isConfirmed) {
+        return {
+          taskId,
+          confirmed: true,
+          providerStatus: "DELETED",
+          deletionMode: "GENUINE_PROVIDER_CONFIRMED",
+          rawResponse: bodyJson || { statusCode: 200 }
+        };
+      }
+
       return {
         taskId,
         confirmed: false,
         providerStatus: "FAILED",
-        rawResponse: { statusCode: res.statusCode, body: bodyText }
+        deletionMode: "NOT_LIVE_VERIFIED",
+        rawResponse: { statusCode: res.statusCode, body: bodyText, parsed: bodyJson }
       };
     } catch (err: any) {
       return {
         taskId,
         confirmed: false,
         providerStatus: "FAILED",
+        deletionMode: "NOT_LIVE_VERIFIED",
         rawResponse: { error: err.message }
       };
     }

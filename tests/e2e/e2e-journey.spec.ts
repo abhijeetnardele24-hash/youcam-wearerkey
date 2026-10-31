@@ -119,4 +119,111 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     await wearerFrame.locator('body').press('Escape');
     await expect(wearerFrame.getByText(/Revoke Try-On Pass\?/i)).not.toBeVisible();
   });
+
+  test('Full multi-step collaboration journey: create pass, helper proposal, try-on, decision, revocation, and receipt', async ({ browser, baseURL }) => {
+    // 1. Wearer Context: create pass from scratch
+    const wearerContext = await browser.newContext();
+    const wearerPage = await wearerContext.newPage();
+    await wearerPage.goto('/create');
+
+    await expect(wearerPage.getByRole('heading', { level: 1 })).toContainText('Create Your Try-On Pass');
+
+    // Load sample silhouette
+    const sampleBtn = wearerPage.getByRole('button', { name: /Use Sample Silhouette/i });
+    await sampleBtn.click();
+
+    // Submit form to create session and open wearer room
+    const createBtn = wearerPage.getByRole('button', { name: /Create Pass & Open Wearer Control Room/i });
+    await createBtn.click();
+
+    // 2. Wearer Room loads
+    await expect(wearerPage.getByRole('heading', { level: 1 })).toContainText('Wearer Control Room', { timeout: 15000 });
+
+    // Generate Helper Link
+    const genLinkBtn = wearerPage.getByRole('button', { name: /Generate Helper Link/i });
+    await expect(genLinkBtn).toBeVisible();
+    await genLinkBtn.click();
+
+    // Read generated single-use helper link
+    const helperInput = wearerPage.locator('input[readonly]');
+    await expect(helperInput).toBeVisible({ timeout: 10000 });
+    const helperUrl = await helperInput.inputValue();
+    expect(helperUrl).toContain('#bootstrap=');
+
+    // 3. Helper Context: open helper room via single-use bootstrap link
+    const helperContext = await browser.newContext();
+    const helperPage = await helperContext.newPage();
+    await helperPage.goto(helperUrl);
+
+    // Helper room authenticates and renders workspace
+    await expect(helperPage.getByRole('heading', { level: 1 })).toContainText('Helper Shopping Workspace', { timeout: 15000 });
+
+    // Privacy Boundary Assertion: Helper DOM NEVER contains wearer body photo
+    const wearerPhotoInHelper = helperPage.locator('img[src*="/api/wearer/session/source"]');
+    await expect(wearerPhotoInHelper).not.toBeAttached();
+
+    // 4. Helper submits garment proposal
+    const sampleGarmentBtn = helperPage.getByRole('button', { name: /Use Sample Garment/i });
+    await sampleGarmentBtn.click();
+
+    // Wait for canvas to load sample garment and populate form
+    await expect(helperPage.locator('img[alt="Garment preview"]')).toBeVisible({ timeout: 5000 });
+
+    const proposeBtn = helperPage.getByRole('button', { name: /Propose to Wearer/i });
+    await proposeBtn.click();
+
+    // Verify proposal card appears in Helper Workspace
+    await expect(helperPage.getByRole('heading', { name: 'Tailored Autumn Wool Overcoat' })).toBeVisible({ timeout: 10000 });
+
+    // 5. Helper requests virtual try-on
+    const requestTryOnBtn = helperPage.getByRole('button', { name: /Request Virtual Try-On/i });
+    await expect(requestTryOnBtn).toBeVisible();
+    await requestTryOnBtn.click();
+
+    // Verify try-on completes
+    await expect(helperPage.getByText('succeeded', { exact: false })).toBeVisible({ timeout: 15000 });
+
+    // Privacy Boundary Assertion: Helper STILL never receives or sees try-on mirror result
+    const resultInHelper = helperPage.locator('img[src*="/result"]');
+    await expect(resultInHelper).not.toBeAttached();
+
+    // 6. In Wearer Room: proposal is visible with private mirror result
+    await expect(wearerPage.getByRole('heading', { name: 'Tailored Autumn Wool Overcoat' })).toBeVisible({ timeout: 15000 });
+
+    // Wearer decides: select Approve and submit Send Verdict
+    const approveBtn = wearerPage.getByRole('button', { name: /Approve/i });
+    await expect(approveBtn).toBeVisible();
+    await approveBtn.click();
+
+    const sendVerdictBtn = wearerPage.getByRole('button', { name: /Send Verdict/i });
+    await expect(sendVerdictBtn).toBeVisible();
+    await sendVerdictBtn.click();
+
+    // 7. Helper room reflects wearer approval
+    await expect(helperPage.getByText('Approved by Wearer')).toBeVisible({ timeout: 10000 });
+
+    // 8. Wearer revokes the pass
+    const revokeBtn = wearerPage.getByRole('button', { name: /Revoke Pass/i });
+    await expect(revokeBtn).toBeVisible();
+    await revokeBtn.click();
+
+    const confirmRevokeBtn = wearerPage.getByRole('button', { name: /Confirm Revoke & Purge/i });
+    await expect(confirmRevokeBtn).toBeVisible();
+    await confirmRevokeBtn.click();
+
+    // Wearer sees revoked status
+    await expect(wearerPage.getByText(/Pass Revoked — Data Purge Initiated/i)).toBeVisible({ timeout: 15000 });
+
+    // Helper room also updates to reflect revocation
+    await expect(helperPage.getByText(/Try-On Pass Revoked by Wearer/i)).toBeVisible({ timeout: 15000 });
+
+    // 9. Run Axe Accessibility Scan on Revoked States
+    const wearerAxe = await new AxeBuilder({ page: wearerPage })
+      .withTags(['wcag2a', 'wcag2aa'])
+      .analyze();
+    expect(wearerAxe.violations).toEqual([]);
+
+    await wearerContext.close();
+    await helperContext.close();
+  });
 });

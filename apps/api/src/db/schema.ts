@@ -14,6 +14,8 @@ export const relaySessions = pgTable("relay_sessions", {
   // Opaque Session Credentials (only the SHA-256 hash is stored; raw token placed in HttpOnly cookie)
   wearerSessionTokenHash: varchar("wearer_session_token_hash", { length: 64 }),
   helperSessionTokenHash: varchar("helper_session_token_hash", { length: 64 }),
+  revokedWearerSessionTokenHash: varchar("revoked_wearer_session_token_hash", { length: 64 }),
+  revokedHelperSessionTokenHash: varchar("revoked_helper_session_token_hash", { length: 64 }),
 
   // Optional legacy capability token hash fields (no longer used for ordinary authorization)
   wearerTokenHash: varchar("wearer_token_hash", { length: 64 }),

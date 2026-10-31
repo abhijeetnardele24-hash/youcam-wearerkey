@@ -14,10 +14,13 @@ Every claim in the WearerKey submission is backed by reproducible automated suit
 | Verification Dimension | Evaluated Target | Measured Result | Status |
 | :--- | :--- | :--- | :--- |
 | **Unit Testing (Domain & Crypto)** | `@wearerkey/domain` | 20 / 20 tests passed | ✅ PASSED |
-| **Provider Contract Testing** | `YouCamClothesProvider` | 17 / 17 tests passed | ✅ PASSED |
+| **Provider Contract Testing** | `YouCamClothesProvider` | 18 / 18 tests passed | ✅ PASSED |
 | **End-to-End API Integration** | `@wearerkey/api` | 13 / 13 tests passed | ✅ PASSED |
-| **Browser E2E User Journeys** | Playwright (Desktop + Mobile) | 8 / 8 tests passed | ✅ PASSED |
-| **Accessibility (WCAG 2.1 AA)** | Axe-Core (Home, Create, Judge) | 0 violations among tested views | ✅ PASSED |
+| **Smoke Script & Image Header Testing** | `live-youcam-smoke` | 8 / 8 tests passed | ✅ PASSED |
+| **Claims & Evidence Verification** | `check-claims` | 8 / 8 tests passed | ✅ PASSED |
+| **Total Automated Vitest Suite** | Vitest Runner (5 suites) | 67 / 67 tests passed | ✅ PASSED |
+| **Browser E2E User Journeys** | Playwright (Desktop + Mobile) | 10 / 10 tests passed | ✅ PASSED |
+| **Accessibility (WCAG 2.1 AA)** | Axe-Core (Home, Create, Judge, Wearer, Helper) | 0 violations among tested views | ✅ PASSED |
 | **Security & Secrets Scan** | Git-tracked file scanner | 0 exposed secrets detected | ✅ PASSED |
 | **Documentation Honesty Audit** | Claims & Terminology auditor | 0 forbidden/hyperbolic phrases | ✅ PASSED |
 
@@ -52,10 +55,21 @@ Every claim in the WearerKey submission is backed by reproducible automated suit
 - **P0-C Secret & Token Redaction:** Asserts that logger redacts secrets, capability tokens, and cookies from output logs.
 - **SSRF Domain Restriction:** Restricts remote image proxying strictly to allowlisted YouCam domains.
 
-### 2.4 Browser E2E & Accessibility Tests (`tests/e2e/e2e-journey.spec.ts`)
-- Executed on both **Desktop Chrome (1280x720)** and **Mobile Viewport (390x844)**.
+### 2.4 Live YouCam Smoke & Header Parsing Tests (`tests/unit/live-youcam-smoke.test.ts`)
+- **Pure JavaScript Header Decoding:** Extracts image format (PNG, JPEG) and exact dimensions from raw binary headers without external native bindings.
+- **Fail-Closed Validation:** Enforces minimum resolution (>= 400x400) and filesize (>= 10KB); rejects SVGs and non-photographic formats.
+- **Provenance Verification:** Validates companion `.provenance.json` files and enforces SHA-256 integrity checks.
+
+### 2.5 Claims Auditor & Verification Tests (`tests/unit/check-claims.test.ts`)
+- **Required Documentation Audit:** Asserts all mandatory documentation files exist.
+- **Terminology & Claim Enforcement:** Detects and flags prohibited marketing buzzwords and unverified claims.
+- **Dynamic Fail-Closed Metrics:** Dynamically extracts Vitest and Playwright test counts directly from JSON test reports with zero hardcoded numbers.
+
+### 2.6 Browser E2E & Accessibility Tests (`tests/e2e/e2e-journey.spec.ts`)
+- Executed on both **Desktop Chrome (1280x720)** and **Mobile Viewport (390x844)** (10 tests total).
 - **Home Page:** Verifies branding, privacy boundary architecture diagram, and Skip-to-Content landmark.
 - **Create Pass Page:** Verifies interactive category selectors and sample reference image loader.
+- **Full Collaboration Multi-Step Journey:** End-to-end execution of pass creation, sample reference loading, helper link extraction, helper garment proposal, try-on dispatch, wearer verdict submission, pass revocation, and post-revocation UI update.
 - **Judge Tour Page:** Launches 30-Second interactive split-screen tour; verifies tablist keyboard navigation; validates wearer and helper iframes.
 - **Accessibility Invariant:** Ran Axe Builder with `['wcag2a', 'wcag2aa']` with zero disabled rules. Result: **0 violations**.
 

@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { hashSessionToken, hashPurgeRecoveryToken, verifyTokenHash } from "@wearerkey/domain";
 import { getDb } from "../db/index.js";
 import { relaySessions } from "../db/schema.js";
@@ -69,8 +69,27 @@ export function requireRole(expectedRole: "wearer" | "helper") {
       )
       .limit(1);
 
-    const session = rows[0];
+    let session = rows[0];
+
+    // If not found in active tokens, check if this token belongs to an already revoked session
     if (!session) {
+      const revokedRows = await db
+        .select()
+        .from(relaySessions)
+        .where(
+          expectedRole === "wearer"
+            ? eq(relaySessions.revokedWearerSessionTokenHash, tokenHash)
+            : eq(relaySessions.revokedHelperSessionTokenHash, tokenHash)
+        )
+        .limit(1);
+
+      if (revokedRows.length > 0) {
+        return reply.status(410).send({
+          error: "SESSION_REVOKED",
+          message: "This Try-On Pass has been revoked by the wearer."
+        });
+      }
+
       return reply.status(403).send({
         error: "FORBIDDEN",
         message: `Invalid session cookie or unauthorized ${expectedRole} role boundary.`
@@ -141,11 +160,11 @@ export async function requirePurgeRecoveryAuth(req: FastifyRequest, reply: Fasti
     }
   }
 
-  const db = await getDb();
-
-  // If dedicated purge recovery credential is provided, verify it
   if (rawToken) {
     const tokenHash = hashPurgeRecoveryToken(rawToken);
+    const db = await getDb();
+
+    // Find session strictly where tokenHash matches purge recovery token
     const rows = await db
       .select()
       .from(relaySessions)
@@ -160,6 +179,7 @@ export async function requirePurgeRecoveryAuth(req: FastifyRequest, reply: Fasti
       });
     }
 
+    // Expiration check for recovery window
     if (session.purgeRecoveryExpiresAt && new Date() >= new Date(session.purgeRecoveryExpiresAt)) {
       return reply.status(410).send({
         error: "PURGE_TOKEN_EXPIRED",
@@ -176,23 +196,45 @@ export async function requirePurgeRecoveryAuth(req: FastifyRequest, reply: Fasti
   }
 
   // 3. Fallback: Authenticated Wearer session cookie (allows wearer to inspect receipt or retry purge)
+  // Reusable helper tokens, bootstrap codes, and unauthenticated callers are rejected.
   const wearerCookie = req.cookies?.wearerkey_session_wearer || req.cookies?.wearerkey_session;
   if (wearerCookie) {
     const tokenHash = hashSessionToken(wearerCookie.trim());
+    const db = await getDb();
+
     const rows = await db
       .select()
       .from(relaySessions)
-      .where(eq(relaySessions.wearerSessionTokenHash, tokenHash))
+      .where(
+        or(
+          eq(relaySessions.wearerSessionTokenHash, tokenHash),
+          eq(relaySessions.revokedWearerSessionTokenHash, tokenHash)
+        )
+      )
       .limit(1);
 
     const session = rows[0];
-    if (session && session.wearerSessionTokenHash && verifyTokenHash(tokenHash, session.wearerSessionTokenHash)) {
-      req.authSession = {
-        sessionId: session.id,
-        role: "wearer",
-        session
-      };
-      return;
+    if (session) {
+      const storedHash = session.wearerSessionTokenHash === tokenHash
+        ? session.wearerSessionTokenHash
+        : session.revokedWearerSessionTokenHash;
+
+      if (storedHash && verifyTokenHash(tokenHash, storedHash)) {
+        // Wearer can inspect receipt or retry purge until hard session expiration
+        if (session.expiresAt && new Date() >= new Date(session.expiresAt)) {
+          return reply.status(410).send({
+            error: "SESSION_EXPIRED",
+            message: "This Try-On Pass has reached hard expiration."
+          });
+        }
+
+        req.authSession = {
+          sessionId: session.id,
+          role: "wearer",
+          session
+        };
+        return;
+      }
     }
   }
 

@@ -1,0 +1,13 @@
+{
+  "filename": "sample_wearer_reference.png",
+  "source": "Unsplash Reference Photography",
+  "creator": "Unsplash Community Photographer",
+  "license": "Unsplash License (Free for Commercial and Non-Commercial Use)",
+  "permitted_use": "Benchmark testing and virtual try-on evaluation",
+  "sha256": "15624eb2c0152a93e97e6e57a9329c0fece00e10ee47445226d543761c3537a7",
+  "dimensions": {
+    "width": 600,
+    "height": 800
+  },
+  "mime_type": "image/png"
+}

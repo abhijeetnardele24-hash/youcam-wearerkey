@@ -321,7 +321,7 @@ describe("YouCamClothesProvider Contract Tests", () => {
   });
 
   describe("deleteTask and deleteFile", () => {
-    it("deletes task via POST /s2s/v2.0/task/delete with GENUINE_PROVIDER_CONFIRMED mode", async () => {
+    it("deletes task and associated files via official POST /s2s/v2.0/task/delete with status: 200", async () => {
       const client = mockAgent.get(baseUrl);
       client
         .intercept({
@@ -332,7 +332,7 @@ describe("YouCamClothesProvider Contract Tests", () => {
             "content-type": "application/json"
           }
         })
-        .reply(200, { success: true });
+        .reply(200, { status: 200 });
 
       const res = await provider.deleteTask("task_to_delete_999");
       expect(res.confirmed).toBe(true);
@@ -340,19 +340,26 @@ describe("YouCamClothesProvider Contract Tests", () => {
       expect(res.deletionMode).toBe("GENUINE_PROVIDER_CONFIRMED");
     });
 
-    it("handles unconfirmed task deletion when provider returns error", async () => {
+    it("rejects confirmation if provider returns HTTP 200 with non-200 status payload", async () => {
       const client = mockAgent.get(baseUrl);
       client
         .intercept({
           path: "/s2s/v2.0/task/delete",
           method: "POST"
         })
-        .reply(500, "Internal Server Error");
+        .reply(200, { status: 400, error: "TASK_NOT_FOUND" });
 
+      const res = await provider.deleteTask("task_not_found_123");
+      expect(res.confirmed).toBe(false);
+      expect(res.providerStatus).toBe("FAILED");
+    });
+
+    it("handles unconfirmed task deletion when provider returns 500 HTTP error", async () => {
+      const client = mockAgent.get(baseUrl);
       client
         .intercept({
-          path: "/s2s/v2.0/task/cloth-v4?task_id=task_fail_delete",
-          method: "DELETE"
+          path: "/s2s/v2.0/task/delete",
+          method: "POST"
         })
         .reply(500, "Internal Server Error");
 

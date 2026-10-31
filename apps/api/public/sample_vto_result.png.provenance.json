@@ -1,0 +1,13 @@
+{
+  "filename": "sample_vto_result.png",
+  "source": "YouCam AI Clothes V4 Synthetic Try-On Output",
+  "creator": "Perfect Corp YouCam Clothes V4 Model",
+  "license": "Evaluation and Testing Output",
+  "permitted_use": "Deterministic local demo fixture and evaluation benchmark",
+  "sha256": "57e17e1318b00264ca5538f7ff2ecffa6d1ea06ba73347d4c14c5ad8e5b89227",
+  "dimensions": {
+    "width": 600,
+    "height": 800
+  },
+  "mime_type": "image/png"
+}

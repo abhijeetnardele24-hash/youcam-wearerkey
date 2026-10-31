@@ -26,34 +26,106 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const db = await getDb();
     const now = new Date();
 
+    // 1. Identify matching session without consuming code yet
+    const wearerMatches = await db
+      .select()
+      .from(relaySessions)
+      .where(eq(relaySessions.wearerBootstrapCodeHash, candidateHash))
+      .limit(1);
+
+    const helperMatches = await db
+      .select()
+      .from(relaySessions)
+      .where(eq(relaySessions.helperBootstrapCodeHash, candidateHash))
+      .limit(1);
+
+    let resolvedRole: "wearer" | "helper" | null = null;
+    let candidateSession: typeof relaySessions.$inferSelect | null = null;
+    let isAlreadyRedeemed = false;
+
+    if (wearerMatches.length > 0) {
+      resolvedRole = "wearer";
+      candidateSession = wearerMatches[0];
+      isAlreadyRedeemed = candidateSession.wearerBootstrapRedeemedAt !== null;
+    } else if (helperMatches.length > 0) {
+      resolvedRole = "helper";
+      candidateSession = helperMatches[0];
+      isAlreadyRedeemed = candidateSession.helperBootstrapRedeemedAt !== null;
+    }
+
+    if (!candidateSession || !resolvedRole) {
+      return reply.status(403).send({
+        error: "FORBIDDEN",
+        message: "Invalid bootstrap code."
+      });
+    }
+
+    // 2. Pre-check: If already redeemed, reject with 409 (prevents code reuse)
+    if (isAlreadyRedeemed) {
+      return reply.status(409).send({
+        error: "BOOTSTRAP_CODE_ALREADY_USED",
+        message: "This capability link has already been redeemed. Single-use bootstrap links cannot be replayed."
+      });
+    }
+
+    // 3. Pre-check: Role mismatch check if caller explicitly requested a specific role (preserves code for proper user)
+    if (requestedRole && requestedRole !== resolvedRole) {
+      return reply.status(403).send({
+        error: "ROLE_MISMATCH",
+        message: `Bootstrap code is authorized for ${resolvedRole}, not ${requestedRole}.`
+      });
+    }
+
+    // 4. Pre-check: Revocation check
+    if (candidateSession.status === "REVOKED") {
+      return reply.status(410).send({
+        error: "SESSION_REVOKED",
+        message: "This Try-On Pass has been revoked by the wearer."
+      });
+    }
+
+    // 5. Pre-check: Expiration check
+    if (new Date() >= new Date(candidateSession.expiresAt) || candidateSession.status === "EXPIRED") {
+      if (candidateSession.status !== "EXPIRED") {
+        await db
+          .update(relaySessions)
+          .set({ status: "EXPIRED" })
+          .where(eq(relaySessions.id, candidateSession.id));
+      }
+      return reply.status(410).send({
+        error: "SESSION_EXPIRED",
+        message: "This Try-On Pass has expired."
+      });
+    }
+
+    // 6. Atomic conditional redemption (concurrency-safe: exactly one winner if raced)
     const sessionToken = generateSessionToken();
     const sessionTokenHash = hashSessionToken(sessionToken);
 
-    let resolvedRole: "wearer" | "helper" | null = null;
     let redeemedSession: typeof relaySessions.$inferSelect | null = null;
 
-    // 1. Attempt atomic conditional redemption for Wearer bootstrap code
-    const wearerUpdate = await db
-      .update(relaySessions)
-      .set({
-        wearerBootstrapRedeemedAt: now,
-        wearerSessionTokenHash: sessionTokenHash,
-        updatedAt: now
-      })
-      .where(
-        and(
-          eq(relaySessions.wearerBootstrapCodeHash, candidateHash),
-          isNull(relaySessions.wearerBootstrapRedeemedAt)
+    if (resolvedRole === "wearer") {
+      const updateResult = await db
+        .update(relaySessions)
+        .set({
+          wearerBootstrapRedeemedAt: now,
+          wearerSessionTokenHash: sessionTokenHash,
+          updatedAt: now
+        })
+        .where(
+          and(
+            eq(relaySessions.id, candidateSession.id),
+            eq(relaySessions.wearerBootstrapCodeHash, candidateHash),
+            isNull(relaySessions.wearerBootstrapRedeemedAt)
+          )
         )
-      )
-      .returning();
+        .returning();
 
-    if (wearerUpdate.length > 0) {
-      resolvedRole = "wearer";
-      redeemedSession = wearerUpdate[0];
+      if (updateResult.length > 0) {
+        redeemedSession = updateResult[0];
+      }
     } else {
-      // 2. Attempt atomic conditional redemption for Helper bootstrap code
-      const helperUpdate = await db
+      const updateResult = await db
         .update(relaySessions)
         .set({
           helperBootstrapRedeemedAt: now,
@@ -62,78 +134,27 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         })
         .where(
           and(
+            eq(relaySessions.id, candidateSession.id),
             eq(relaySessions.helperBootstrapCodeHash, candidateHash),
             isNull(relaySessions.helperBootstrapRedeemedAt)
           )
         )
         .returning();
 
-      if (helperUpdate.length > 0) {
-        resolvedRole = "helper";
-        redeemedSession = helperUpdate[0];
+      if (updateResult.length > 0) {
+        redeemedSession = updateResult[0];
       }
     }
 
-    // 3. If no row was conditionally updated, diagnose replay vs invalid code
-    if (!redeemedSession || !resolvedRole) {
-      // Check if code was already redeemed (replay attack prevention)
-      const existingWearer = await db
-        .select()
-        .from(relaySessions)
-        .where(eq(relaySessions.wearerBootstrapCodeHash, candidateHash))
-        .limit(1);
-
-      if (existingWearer.length > 0 && existingWearer[0].wearerBootstrapRedeemedAt !== null) {
-        return reply.status(409).send({
-          error: "BOOTSTRAP_CODE_ALREADY_USED",
-          message: "This capability link has already been redeemed. Single-use bootstrap links cannot be replayed."
-        });
-      }
-
-      const existingHelper = await db
-        .select()
-        .from(relaySessions)
-        .where(eq(relaySessions.helperBootstrapCodeHash, candidateHash))
-        .limit(1);
-
-      if (existingHelper.length > 0 && existingHelper[0].helperBootstrapRedeemedAt !== null) {
-        return reply.status(409).send({
-          error: "BOOTSTRAP_CODE_ALREADY_USED",
-          message: "This capability link has already been redeemed. Single-use bootstrap links cannot be replayed."
-        });
-      }
-
-      return reply.status(403).send({
-        error: "FORBIDDEN",
-        message: "Invalid bootstrap code."
+    if (!redeemedSession) {
+      // A concurrent request won the redemption race
+      return reply.status(409).send({
+        error: "BOOTSTRAP_CODE_ALREADY_USED",
+        message: "This capability link has already been redeemed. Single-use bootstrap links cannot be replayed."
       });
     }
 
-    // Role mismatch check if caller explicitly requested a specific role
-    if (requestedRole && requestedRole !== resolvedRole) {
-      return reply.status(403).send({
-        error: "ROLE_MISMATCH",
-        message: `Bootstrap code is authorized for ${resolvedRole}, not ${requestedRole}.`
-      });
-    }
-
-    // Check revocation
-    if (redeemedSession.status === "REVOKED") {
-      return reply.status(410).send({
-        error: "SESSION_REVOKED",
-        message: "This Try-On Pass has been revoked by the wearer."
-      });
-    }
-
-    // Check expiration
-    if (new Date() >= new Date(redeemedSession.expiresAt) || redeemedSession.status === "EXPIRED") {
-      return reply.status(410).send({
-        error: "SESSION_EXPIRED",
-        message: "This Try-On Pass has expired."
-      });
-    }
-
-    // Set role-separated and standard secure HttpOnly session cookies
+    // 7. Set role-separated and standard secure HttpOnly session cookies
     const cookieOptions = {
       path: "/",
       httpOnly: true,

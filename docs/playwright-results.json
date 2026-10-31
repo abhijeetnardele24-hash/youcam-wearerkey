@@ -147,6 +147,8 @@
         "PORT": "4000",
         "HOST": "127.0.0.1",
         "NODE_ENV": "development",
+        "APP_BASE_URL": "http://127.0.0.1:4000",
+        "CORS_ALLOWED_ORIGINS": "http://127.0.0.1:4000,http://localhost:4000",
         "YOUCAM_PROVIDER_MODE": "DEMO_FIXTURE",
         "PROVIDER_ID_ENCRYPTION_KEY": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         "SESSION_COOKIE_SECRET": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
@@ -186,12 +188,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2602,
+                      "duration": 4869,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-31T05:08:28.135Z",
+                      "startTime": "2026-10-31T06:39:58.752Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -220,12 +222,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4717,
+                      "duration": 4610,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-31T05:08:30.923Z",
+                      "startTime": "2026-10-31T06:40:03.798Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -254,12 +256,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1227,
+                      "duration": 21856,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-31T05:08:35.661Z",
+                      "startTime": "2026-10-31T06:40:08.416Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -288,12 +290,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2320,
+                      "duration": 2563,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-31T05:08:36.903Z",
+                      "startTime": "2026-10-31T06:40:30.282Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -304,6 +306,40 @@
               "id": "fcea6c0b55df4056fff0-4e9523d97728001d7f70",
               "file": "e2e-journey.spec.ts",
               "line": 99,
+              "column": 7
+            },
+            {
+              "title": "Full multi-step collaboration journey: create pass, helper proposal, try-on, decision, revocation, and receipt",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Desktop Chrome",
+                  "projectName": "Desktop Chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4927,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-31T06:40:32.854Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-bf2cb3b7a82f3fa8df81",
+              "file": "e2e-journey.spec.ts",
+              "line": 123,
               "column": 7
             },
             {
@@ -322,12 +358,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1085,
+                      "duration": 21711,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-31T05:08:39.783Z",
+                      "startTime": "2026-10-31T06:40:38.319Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -356,12 +392,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4378,
+                      "duration": 7046,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-31T05:08:41.035Z",
+                      "startTime": "2026-10-31T06:41:00.196Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -390,12 +426,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2117,
+                      "duration": 28765,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-31T05:08:45.424Z",
+                      "startTime": "2026-10-31T06:41:07.251Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -424,12 +460,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2073,
+                      "duration": 2759,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-31T05:08:47.557Z",
+                      "startTime": "2026-10-31T06:41:36.026Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -441,6 +477,40 @@
               "file": "e2e-journey.spec.ts",
               "line": 99,
               "column": 7
+            },
+            {
+              "title": "Full multi-step collaboration journey: create pass, helper proposal, try-on, decision, revocation, and receipt",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Viewport (390px)",
+                  "projectName": "Mobile Viewport (390px)",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6033,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-31T06:41:38.798Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fcea6c0b55df4056fff0-319cdf5070e313032cdc",
+              "file": "e2e-journey.spec.ts",
+              "line": 123,
+              "column": 7
             }
           ]
         }
@@ -449,9 +519,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-10-31T05:08:24.716Z",
-    "duration": 25274.919,
-    "expected": 8,
+    "startTime": "2026-10-31T06:39:55.410Z",
+    "duration": 109720.13799999999,
+    "expected": 10,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

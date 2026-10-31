@@ -176,9 +176,13 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
         })
         .where(eq(relaySessions.id, auth.sessionId));
 
+      const hostHeader = req.headers["x-forwarded-host"] || req.headers.host;
+      const protoHeader = req.headers["x-forwarded-proto"] || req.protocol || "http";
+      const baseOrigin = req.headers.origin || (hostHeader ? `${protoHeader}://${hostHeader}` : config.APP_BASE_URL);
+
       return reply.send({
         helper_bootstrap_code: helperBootstrapCode,
-        helper_url: `${config.APP_BASE_URL}/helper#bootstrap=${helperBootstrapCode}`,
+        helper_url: `${baseOrigin}/helper#bootstrap=${helperBootstrapCode}`,
         expires_at: auth.session.expiresAt.toISOString()
       });
     }
@@ -432,10 +436,16 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     const deletionError = errors.length > 0 ? errors.join("; ") : null;
     const revokedAt = session.revokedAt || now;
 
-    // Purge recovery token: always mint on revocation so that wearer can view receipt or retry
-    const purgeRecoveryToken = generatePurgeRecoveryToken();
-    const purgeRecoveryTokenHash = hashPurgeRecoveryToken(purgeRecoveryToken);
-    const purgeRecoveryExpiresAt = new Date(Date.now() + 24 * 3600 * 1000); // 24-hour window
+    // Purge recovery token: mint strictly when deletions fail or remain partial
+    let purgeRecoveryToken: string | null = null;
+    let purgeRecoveryTokenHash: string | null = null;
+    let purgeRecoveryExpiresAt: Date | null = null;
+
+    if (anyFailed) {
+      purgeRecoveryToken = generatePurgeRecoveryToken();
+      purgeRecoveryTokenHash = hashPurgeRecoveryToken(purgeRecoveryToken);
+      purgeRecoveryExpiresAt = new Date(Date.now() + 3600 * 1000); // 1-hour window aligned with cookie maxAge
+    }
 
     // Versioned receipt tracking
     const existingVersions: any[] = (session.versionedReceiptsJson as any[]) || [];
@@ -478,6 +488,10 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
 
     const updatedVersions = [...existingVersions, receiptPayload];
 
+    // Atomically invalidate active session credentials while retaining revoked hashes for 410 detection & recovery
+    const revokedWearerHash = session.wearerSessionTokenHash || session.revokedWearerSessionTokenHash;
+    const revokedHelperHash = session.helperSessionTokenHash || session.revokedHelperSessionTokenHash;
+
     await db
       .update(relaySessions)
       .set({
@@ -488,6 +502,10 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
         sourceDeletionStatus: sourceStatus,
         deletionError,
         deletionErrors: structuredErrors.length > 0 ? structuredErrors : null,
+        wearerSessionTokenHash: null,
+        helperSessionTokenHash: null,
+        revokedWearerSessionTokenHash: revokedWearerHash,
+        revokedHelperSessionTokenHash: revokedHelperHash,
         purgeRecoveryTokenHash,
         purgeRecoveryExpiresAt,
         signedReceiptJson: JSON.stringify(receiptPayload),
@@ -531,9 +549,6 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
         }
       });
 
-      // Clear standard wearer session cookie
-      reply.clearCookie("wearerkey_session_wearer", { path: "/" });
-      reply.clearCookie("wearerkey_session", { path: "/" });
 
       // If partial failure occurred, issue dedicated Secure HttpOnly purge-recovery cookie
       if (purgeRecoveryToken) {

@@ -1,6 +1,6 @@
 {
   "project": "WearerKey",
-  "evaluated_commit_sha": "538a5712c376e0e85ddbb4b9f6beaecf79779f5b",
+  "evaluated_commit_sha": "17bab559b8f873a1a2c901c63c208df3d614bb54",
   "audit_verdict": "INTERNAL_COMPLETE_EXTERNAL_ACTION_REQUIRED",
   "timestamp": "2026-10-31T05:10:00.000Z",
   "engine": "YouCam AI Clothes V4",
@@ -12,19 +12,21 @@
     "test_suites": {
       "vitest_unit_and_integration": {
         "status": "PASSED",
-        "total": 50,
-        "passed": 50,
+        "total": 67,
+        "passed": 67,
         "failed": 0,
         "files": [
           "tests/unit/domain.test.ts",
           "tests/unit/youcam-provider.test.ts",
-          "tests/integration/api.test.ts"
+          "tests/integration/api.test.ts",
+          "tests/unit/live-youcam-smoke.test.ts",
+          "tests/unit/check-claims.test.ts"
         ]
       },
       "playwright_browser_e2e": {
         "status": "PASSED",
-        "total": 8,
-        "passed": 8,
+        "total": 10,
+        "passed": 10,
         "failed": 0,
         "viewports": ["Desktop Chrome (1280x720)", "Mobile Viewport (390x844)"]
       }
@@ -35,7 +37,9 @@
       "tested_views": [
         "Home Page (/)",
         "Create Pass Page (/create)",
-        "Judge Tour Page (/judge)"
+        "Judge Tour Page (/judge)",
+        "Wearer Room (/wearer)",
+        "Helper Room (/helper)"
       ]
     },
     "security": {

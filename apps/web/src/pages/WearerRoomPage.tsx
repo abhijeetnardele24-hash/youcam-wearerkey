@@ -83,6 +83,33 @@ export const WearerRoomPage: React.FC = () => {
     refetchInterval: 3000,
   });
 
+  // Real-time server-sent events with background polling fallback (connects once session is authenticated)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.EventSource || !session) return;
+
+    const eventSource = new EventSource('/api/wearer/events', { withCredentials: true });
+
+    eventSource.addEventListener('PROPOSAL_CREATED', () => {
+      queryClient.invalidateQueries({ queryKey: ['wearer-session'] });
+    });
+    eventSource.addEventListener('TRYON_COMPLETED', () => {
+      queryClient.invalidateQueries({ queryKey: ['wearer-session'] });
+    });
+    eventSource.addEventListener('DECISION_RECORDED', () => {
+      queryClient.invalidateQueries({ queryKey: ['wearer-session'] });
+    });
+    eventSource.addEventListener('SESSION_REVOKED', () => {
+      queryClient.invalidateQueries({ queryKey: ['wearer-session'] });
+    });
+    eventSource.addEventListener('SESSION_EXPIRED', () => {
+      queryClient.invalidateQueries({ queryKey: ['wearer-session'] });
+    });
+
+    return () => {
+      eventSource.close();
+    };
+  }, [queryClient, !!session]);
+
   const generateHelperLinkMutation = useMutation({
     mutationFn: () => api.createHelperLink(),
     onSuccess: (data) => {
@@ -158,6 +185,39 @@ export const WearerRoomPage: React.FC = () => {
   }
 
   if (error || !session) {
+    const isRevokedError =
+      (error as any)?.statusCode === 410 ||
+      (error as any)?.error === 'SESSION_REVOKED' ||
+      (error as any)?.message?.toLowerCase().includes('revoked');
+
+    if (isRevokedError) {
+      return (
+        <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
+          <Lock className="w-12 h-12 text-rust mx-auto mb-2" />
+          <h2 className="font-serif text-xl font-bold text-ink mb-1">Pass Revoked — Data Purge Initiated</h2>
+          <p className="text-xs text-ink-muted leading-relaxed">
+            All helper access has been revoked. In-memory reference image buffers have been purged,
+            and automated deletion requests have been dispatched to YouCam's File and Task APIs.
+          </p>
+          <div className="pt-4 flex items-center justify-center gap-3">
+            <Link
+              to="/receipt"
+              className="px-4 py-2 bg-wearer hover:bg-wearer-dark text-white text-xs font-semibold rounded transition-colors flex items-center gap-1.5"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>View Deletion Receipt</span>
+            </Link>
+            <Link
+              to="/create"
+              className="px-4 py-2 rounded border border-stone text-xs font-semibold text-ink hover:bg-stone-light/60 transition-colors"
+            >
+              Create New Pass
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="max-w-lg mx-auto px-4 py-16 text-center">
         <ShieldAlert className="w-12 h-12 text-rust mx-auto mb-3" />
@@ -311,6 +371,7 @@ export const WearerRoomPage: React.FC = () => {
                 <input
                   type="text"
                   readOnly
+                  aria-label="Single-use helper invitation link"
                   value={helperUrl}
                   className="flex-1 px-3 py-2 bg-stone-light/30 border border-stone rounded font-mono text-xs text-ink select-all focus:outline-none"
                 />

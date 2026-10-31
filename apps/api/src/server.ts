@@ -41,16 +41,32 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
+  // Cookie Support for capability token bootstrap & session management
+  // Registered upfront so req.cookies is reliably populated on all incoming hooks
+  const cookieSecret = config.SESSION_COOKIE_SECRET || config.ENCRYPTION_KEY_HEX;
+  await app.register(fastifyCookie, {
+    secret: cookieSecret,
+    parseOptions: {}
+  });
+
   // Endpoint-specific sliding-window rate limiter per client IP + route scope
   const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
   const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+  const MAX_RATE_LIMIT_ENTRIES = 5000;
 
-  function getRouteLimit(pathname: string): number {
-    if (pathname.startsWith("/api/auth/bootstrap")) return 30;
-    if (pathname === "/api/sessions") return 20;
-    if (pathname.includes("/generate")) return 15;
-    if (pathname.startsWith("/api/receipts/verify")) return 60;
-    if (pathname.includes("/retry-purge")) return 20;
+  function normalizeRoute(pathname: string): string {
+    return pathname
+      .replace(/\/api\/wearer\/proposals\/[^/]+/, "/api/wearer/proposals/:id")
+      .replace(/\/api\/helper\/proposals\/[^/]+/, "/api/helper/proposals/:id")
+      .replace(/\/api\/receipts\/[^/]+/, "/api/receipts/:id");
+  }
+
+  function getRouteLimit(normalizedPath: string): number {
+    if (normalizedPath.startsWith("/api/auth/bootstrap")) return 30;
+    if (normalizedPath === "/api/sessions") return 20;
+    if (normalizedPath.includes("/generate")) return 15;
+    if (normalizedPath.startsWith("/api/receipts/verify")) return 60;
+    if (normalizedPath.includes("/retry-purge")) return 20;
     return config.RATE_LIMIT_MAX;
   }
 
@@ -61,11 +77,27 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const ip = req.ip || req.socket.remoteAddress || "127.0.0.1";
     const pathname = req.url.split("?")[0];
-    const key = `${ip}:${pathname}`;
+    const normalizedPath = normalizeRoute(pathname);
+    const key = `${ip}:${normalizedPath}`;
     const now = Date.now();
-    const entry = rateLimitMap.get(key);
 
-    const limit = isTestRateLimitEnforced ? 2 : getRouteLimit(pathname);
+    // Bounded cleanup to prevent memory exhaustion DoS
+    if (rateLimitMap.size > MAX_RATE_LIMIT_ENTRIES) {
+      for (const [k, v] of rateLimitMap.entries()) {
+        if (now > v.resetAt) rateLimitMap.delete(k);
+      }
+      if (rateLimitMap.size > MAX_RATE_LIMIT_ENTRIES) {
+        const iter = rateLimitMap.keys();
+        for (let i = 0; i < 1000; i++) {
+          const next = iter.next();
+          if (next.done) break;
+          rateLimitMap.delete(next.value);
+        }
+      }
+    }
+
+    const entry = rateLimitMap.get(key);
+    const limit = isTestRateLimitEnforced ? 2 : getRouteLimit(normalizedPath);
 
     if (!entry || now > entry.resetAt) {
       rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
@@ -167,12 +199,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
-  // Cookie Support for capability token bootstrap & session management
-  const cookieSecret = config.SESSION_COOKIE_SECRET || config.ENCRYPTION_KEY_HEX;
-  await app.register(fastifyCookie, {
-    secret: cookieSecret,
-    parseOptions: {}
-  });
 
   // CORS: Explicit allowlist
   await app.register(cors, {

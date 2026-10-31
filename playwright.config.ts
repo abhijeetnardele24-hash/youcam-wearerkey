@@ -38,6 +38,8 @@ export default defineConfig({
       PORT: '4000',
       HOST: '127.0.0.1',
       NODE_ENV: 'development',
+      APP_BASE_URL: 'http://127.0.0.1:4000',
+      CORS_ALLOWED_ORIGINS: 'http://127.0.0.1:4000,http://localhost:4000',
       YOUCAM_PROVIDER_MODE: 'DEMO_FIXTURE',
       PROVIDER_ID_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       SESSION_COOKIE_SECRET: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
