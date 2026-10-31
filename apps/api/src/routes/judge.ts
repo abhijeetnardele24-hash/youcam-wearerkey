@@ -2,10 +2,12 @@ import type { FastifyPluginAsync } from "fastify";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { eq } from "drizzle-orm";
 import {
-  generateCapabilityToken,
-  hashCapabilityToken,
-  encryptProviderIdentifier
+  generateBootstrapCode,
+  hashBootstrapCode,
+  encryptProviderIdentifier,
+  signReceiptPayload
 } from "@wearerkey/domain";
 import { config } from "../config.js";
 import { getDb } from "../db/index.js";
@@ -18,11 +20,11 @@ const publicDir = path.resolve(__dirname, "../../public");
 
 export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post("/api/judge/seed", async (_req, reply) => {
-    const wearerToken = generateCapabilityToken();
-    const helperToken = generateCapabilityToken();
+    const wearerBootstrapCode = generateBootstrapCode();
+    const helperBootstrapCode = generateBootstrapCode();
 
-    const wearerHash = hashCapabilityToken(wearerToken);
-    const helperHash = hashCapabilityToken(helperToken);
+    const wearerBootstrapHash = hashBootstrapCode(wearerBootstrapCode);
+    const helperBootstrapHash = hashBootstrapCode(helperBootstrapCode);
 
     const expiresAt = new Date(Date.now() + 4 * 3600 * 1000); // 4 hours
     const db = await getDb();
@@ -32,8 +34,8 @@ export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
       .insert(relaySessions)
       .values({
         status: "ACTIVE",
-        wearerTokenHash: wearerHash,
-        helperTokenHash: helperHash,
+        wearerBootstrapCodeHash: wearerBootstrapHash,
+        helperBootstrapCodeHash: helperBootstrapHash,
         consentVersion: "2026-10-30-v1",
         allowedCategories: ["upper_body", "outer", "full_body"],
         maxProposals: 3,
@@ -101,6 +103,43 @@ export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
       decidedAt: new Date()
     });
 
+    // 5. Seed Tamper-Evident Signed Deletion & Audit Receipt (v2.0)
+    const receiptPayload: any = {
+      schema_version: "2.0",
+      receipt_version: 1,
+      is_final: false,
+      session_id: session.id,
+      status: "ACTIVE",
+      revoked_at: null,
+      purged_at: null,
+      overall_deletion_status: "NOT_REQUESTED",
+      task_deletion_status: "NOT_REQUESTED",
+      source_file_deletion_status: "NOT_REQUESTED",
+      garment_file_deletion_status: "NOT_REQUESTED",
+      provider_tasks_total: 1,
+      provider_tasks_deleted: 0,
+      remote_files_total: 1,
+      remote_files_deleted: 0,
+      in_memory_buffers_purged: false,
+      local_access_revoked: false,
+      deletion_verification_mode: "SIMULATED",
+      evaluated_commit_sha: process.env.GIT_COMMIT_SHA || "unknown",
+      evidence_authority: "WEARERKEY_AUDITABLE_LEDGER",
+      deletion_error: null
+    };
+
+    const signingKey = config.RECEIPT_SIGNING_KEY || config.ENCRYPTION_KEY_HEX;
+    const signatureInfo = signReceiptPayload(receiptPayload, signingKey);
+    receiptPayload.receipt_hmac = signatureInfo;
+
+    await db
+      .update(relaySessions)
+      .set({
+        signedReceiptJson: JSON.stringify(receiptPayload),
+        versionedReceiptsJson: [receiptPayload]
+      })
+      .where(eq(relaySessions.id, session.id));
+
     await db.insert(auditEvents).values({
       sessionId: session.id,
       actorRole: "judge",
@@ -110,10 +149,10 @@ export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
 
     return reply.status(201).send({
       session_id: session.id,
-      wearer_token: wearerToken,
-      helper_token: helperToken,
-      wearer_url: `/wearer/${wearerToken}`,
-      helper_url: `/helper/${helperToken}`,
+      wearer_bootstrap_code: wearerBootstrapCode,
+      helper_bootstrap_code: helperBootstrapCode,
+      wearer_url: `/wearer#bootstrap=${wearerBootstrapCode}`,
+      helper_url: `/helper#bootstrap=${helperBootstrapCode}`,
       status: "ACTIVE",
       mode: providerMode,
       message: "Judge sample session seeded successfully with verified deterministic V4 result."

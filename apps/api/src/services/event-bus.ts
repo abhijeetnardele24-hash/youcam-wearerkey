@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 
 export interface SessionEvent {
   sessionId: string;
-  type: "PROPOSAL_CREATED" | "TASK_STATUS_CHANGED" | "DECISION_RECORDED" | "SESSION_REVOKED" | "SOURCE_UPLOADED";
+  type: "PROPOSAL_CREATED" | "TASK_STATUS_CHANGED" | "DECISION_RECORDED" | "SESSION_REVOKED" | "SOURCE_UPLOADED" | "SESSION_EXPIRED";
   targetRole: "all" | "wearer" | "helper";
   payload: Record<string, unknown>;
 }

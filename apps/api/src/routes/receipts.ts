@@ -1,10 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
-import { eq, or } from "drizzle-orm";
-import { hashCapabilityToken, verifyReceiptSignature, signReceiptPayload } from "@wearerkey/domain";
+import { verifyReceiptSignature } from "@wearerkey/domain";
 import { ReceiptVerificationRequestSchema } from "@wearerkey/contracts";
 import { config } from "../config.js";
-import { getDb } from "../db/index.js";
-import { relaySessions, providerTasks, proposals } from "../db/schema.js";
 import { requirePurgeRecoveryAuth } from "../middleware/auth.js";
 
 export const receiptRoutes: FastifyPluginAsync = async (fastify) => {
@@ -42,7 +39,7 @@ export const receiptRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 
-  // 2. Query Scoped Receipt via Authenticated Session / Purge Recovery (P0-C: No tokens in URL)
+  // 2. Query Scoped Receipt via Authenticated Session / Purge Recovery (No tokens in URL)
   fastify.get(
     "/api/receipts",
     { preHandler: [requirePurgeRecoveryAuth] },
@@ -50,152 +47,49 @@ export const receiptRoutes: FastifyPluginAsync = async (fastify) => {
       const auth = req.authSession!;
       const session = auth.session;
 
-      // If an immutable signed receipt was already persisted, return it directly
-      if (session.signedReceiptJson) {
-        try {
-          const parsed = JSON.parse(session.signedReceiptJson);
-          return reply.send(parsed);
-        } catch {
-          // fall through to regenerate
-        }
+      // Handle all-versions query
+      const query = req.query as { all_versions?: string; version?: string };
+      if (query?.all_versions === "true") {
+        const versions = (session.versionedReceiptsJson as any[]) || [];
+        return reply.send({
+          session_id: session.id,
+          total_versions: versions.length,
+          receipts: versions
+        });
       }
 
-      const db = await getDb();
-      const taskRows = await db
-        .select()
-        .from(providerTasks)
-        .innerJoin(proposals, eq(providerTasks.proposalId, proposals.id))
-        .where(eq(proposals.sessionId, session.id));
+      // If specific version requested
+      if (query?.version) {
+        const targetVer = parseInt(query.version, 10);
+        const versions = (session.versionedReceiptsJson as any[]) || [];
+        const found = versions.find((r) => r.receipt_version === targetVer);
+        if (!found) {
+          return reply.status(404).send({
+            error: "RECEIPT_VERSION_NOT_FOUND",
+            message: `Receipt version ${targetVer} not found for this session.`
+          });
+        }
+        return reply.send(found);
+      }
 
-      const totalTasks = taskRows.length;
-      const deletedTasks = taskRows.filter((t) => t.provider_tasks.taskDeletionStatus === "CONFIRMED").length;
-      const failedTasks = taskRows.filter((t) => t.provider_tasks.taskDeletionStatus === "FAILED").length;
+      // Return the authoritative persisted latest signed receipt
+      if (!session.signedReceiptJson) {
+        return reply.status(404).send({
+          error: "RECEIPT_NOT_FOUND",
+          message: "No deletion receipt has been generated for this session yet. Session must be revoked or purged first."
+        });
+      }
 
-      const propRows = await db
-        .select()
-        .from(proposals)
-        .where(eq(proposals.sessionId, session.id));
-
-      const garmentFiles = propRows.filter((p) => !!p.garmentFileIdCiphertext);
-      const garmentDeleted = propRows.filter((p) => p.garmentDeletionStatus === "CONFIRMED").length;
-
-      const totalFiles = (session.sourceFileIdCiphertext ? 1 : 0) + garmentFiles.length;
-      const deletedFiles = (session.sourceDeletionStatus === "CONFIRMED" ? 1 : 0) + garmentDeleted;
-
-      const taskStatus =
-        totalTasks === 0 ? "NOT_REQUESTED" : failedTasks > 0 ? (deletedTasks > 0 ? "PARTIAL_FAILURE" : "FAILED") : "CONFIRMED";
-      const garmentStatus =
-        garmentFiles.length === 0 ? "NOT_REQUESTED" : garmentDeleted === garmentFiles.length ? "CONFIRMED" : "PARTIAL_FAILURE";
-
-      const receiptPayload: any = {
-        schema_version: "2.0",
-        session_id: session.id,
-        status: session.status,
-        revoked_at: session.revokedAt ? session.revokedAt.toISOString() : null,
-        purged_at: session.purgedAt ? session.purgedAt.toISOString() : null,
-        overall_deletion_status: session.deletionStatus,
-        task_deletion_status: taskStatus,
-        source_file_deletion_status: session.sourceDeletionStatus,
-        garment_file_deletion_status: garmentStatus,
-        provider_tasks_total: totalTasks,
-        provider_tasks_deleted: deletedTasks,
-        remote_files_total: totalFiles,
-        remote_files_deleted: deletedFiles,
-        in_memory_buffers_purged: session.status === "REVOKED",
-        local_access_revoked: session.status === "REVOKED",
-        evaluated_commit_sha: process.env.GIT_COMMIT_SHA || "unknown",
-        evidence_authority: "WEARERKEY_AUDITABLE_LEDGER",
-        deletion_error: session.deletionError || null,
-        ...(session.deletionErrors ? { deletion_errors: session.deletionErrors } : {})
-      };
-
-      const signatureInfo = signReceiptPayload(receiptPayload, signingKey);
-      receiptPayload.receipt_hmac = signatureInfo;
-
-      return reply.send(receiptPayload);
-    }
-  );
-
-  // 3. Query Scoped Receipt by token (Backward compatibility)
-  fastify.get("/api/receipts/:token", async (req, reply) => {
-    const { token } = req.params as { token: string };
-    if (!token || token.length < 16) {
-      return reply.status(400).send({ error: "INVALID_TOKEN" });
-    }
-
-    const tokenHash = hashCapabilityToken(token);
-    const db = await getDb();
-
-    const rows = await db
-      .select()
-      .from(relaySessions)
-      .where(
-        or(
-          eq(relaySessions.wearerTokenHash, tokenHash),
-          eq(relaySessions.helperTokenHash, tokenHash),
-          eq(relaySessions.wearerSessionTokenHash, tokenHash),
-          eq(relaySessions.helperSessionTokenHash, tokenHash),
-          eq(relaySessions.purgeRecoveryTokenHash, tokenHash)
-        )
-      )
-      .limit(1);
-
-    const session = rows[0];
-    if (!session) {
-      return reply.status(404).send({ error: "NOT_FOUND", message: "Receipt not found for this token" });
-    }
-
-    if (session.signedReceiptJson) {
       try {
         const parsed = JSON.parse(session.signedReceiptJson);
         return reply.send(parsed);
       } catch {
-        // fall through
+        // Strict integrity: fail closed rather than silently regenerating corrupted data
+        return reply.status(500).send({
+          error: "RECEIPT_INTEGRITY_ERROR",
+          message: "Persisted receipt record is malformed."
+        });
       }
     }
-
-    const isWearer =
-      session.wearerTokenHash === tokenHash ||
-      session.wearerSessionTokenHash === tokenHash ||
-      session.purgeRecoveryTokenHash === tokenHash;
-
-    const taskRows = await db
-      .select()
-      .from(providerTasks)
-      .innerJoin(proposals, eq(providerTasks.proposalId, proposals.id))
-      .where(eq(proposals.sessionId, session.id));
-
-    const totalTasks = taskRows.length;
-    const deletedTasks = taskRows.filter((t) => t.provider_tasks.taskDeletionStatus === "CONFIRMED").length;
-
-    // Build canonical receipt payload
-    const receiptPayload: any = {
-      schema_version: "2.0",
-      session_id: session.id,
-      revoked_at: session.revokedAt ? session.revokedAt.toISOString() : null,
-      purged_at: session.purgedAt ? session.purgedAt.toISOString() : null,
-      overall_deletion_status: session.deletionStatus,
-      source_file_deletion_status: session.sourceDeletionStatus,
-      provider_tasks_total: totalTasks,
-      provider_tasks_deleted: deletedTasks,
-      in_memory_buffers_purged: session.status === "REVOKED",
-      local_access_revoked: session.status === "REVOKED",
-      evaluated_commit_sha: process.env.GIT_COMMIT_SHA || "unknown",
-      evidence_authority: "WEARERKEY_APPLICATION_SIGNED_ASSERTION",
-      deletion_error: session.deletionError || null
-    };
-
-    if (!isWearer) {
-      // Helper receipt is redacted: no task details or specific errors
-      receiptPayload.role = "helper";
-      receiptPayload.photo_access = "NEVER_GRANTED";
-    }
-
-    // Sign the receipt with HMAC-SHA256
-    const signatureInfo = signReceiptPayload(receiptPayload, signingKey);
-    receiptPayload.receipt_hmac = signatureInfo;
-
-    return reply.send(receiptPayload);
-  });
+  );
 };
-

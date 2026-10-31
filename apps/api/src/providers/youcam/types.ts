@@ -35,6 +35,7 @@ export interface ProviderDeletionResult {
   taskId: string;
   confirmed: boolean;
   providerStatus: "DELETED" | "FAILED" | "NOT_SUPPORTED";
+  deletionMode?: "GENUINE_PROVIDER_CONFIRMED" | "SIMULATED" | "NOT_LIVE_VERIFIED";
   rawResponse?: Record<string, unknown>;
 }
 

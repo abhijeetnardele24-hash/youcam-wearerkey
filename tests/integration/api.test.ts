@@ -2,6 +2,24 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../apps/api/src/server.js";
 
+function extractCookie(res: any, cookieName: string): string {
+  const setCookie = res.headers["set-cookie"];
+  if (!setCookie) return "";
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+  for (const c of cookies) {
+    const match = c.match(new RegExp(`^(${cookieName}=[^;]+)`));
+    if (match) return match[1];
+  }
+  return "";
+}
+
+function extractAllCookies(res: any): string {
+  const setCookie = res.headers["set-cookie"];
+  if (!setCookie) return "";
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+  return cookies.map((c) => c.split(";")[0]).join("; ");
+}
+
 describe("WearerKey End-to-End API Integration", () => {
   let app: FastifyInstance;
 
@@ -17,7 +35,7 @@ describe("WearerKey End-to-End API Integration", () => {
   it("GET /api/health returns HTTP 200 with truthful metadata", async () => {
     const res = await app.inject({
       method: "GET",
-      url: "/api/health"
+      url: "/api/health",
     });
 
     expect(res.statusCode).toBe(200);
@@ -31,7 +49,7 @@ describe("WearerKey End-to-End API Integration", () => {
   it("GET /api/meta returns supported categories and safety disclaimer", async () => {
     const res = await app.inject({
       method: "GET",
-      url: "/api/meta"
+      url: "/api/meta",
     });
 
     expect(res.statusCode).toBe(200);
@@ -41,8 +59,8 @@ describe("WearerKey End-to-End API Integration", () => {
     expect(body.safety_disclaimer.toLowerCase()).toContain("visual appearance preview");
   });
 
-  it("Executes the complete two-role collaboration flow and enforces privacy boundaries", async () => {
-    // 1. Wearer creates Try-On Pass
+  it("Executes the complete two-role collaboration flow with cookie auth and privacy boundaries", async () => {
+    // 1. Wearer creates Try-On Pass (returns single-use bootstrap code and URL)
     const createRes = await app.inject({
       method: "POST",
       url: "/api/sessions",
@@ -50,40 +68,63 @@ describe("WearerKey End-to-End API Integration", () => {
         allowed_categories: ["outer", "upper_body"],
         max_proposals: 3,
         expires_in_hours: 2,
-        gift_mode: false
-      }
+        gift_mode: false,
+      },
     });
 
-    if (createRes.statusCode !== 201) {
-      console.error("CREATE SESSION FAILED:", createRes.statusCode, createRes.payload);
-    }
     expect(createRes.statusCode).toBe(201);
     const sessionData = createRes.json();
     expect(sessionData.session_id).toBeDefined();
-    expect(sessionData.wearer_token).toBeDefined();
-    const wearerToken = sessionData.wearer_token;
+    expect(sessionData.wearer_bootstrap_code).toBeDefined();
+    expect(sessionData.wearer_url).toContain("#bootstrap=");
 
-    // 2. Wearer mints Helper link
+    // 2. Wearer redeems bootstrap code to obtain HttpOnly session cookie
+    const wearerBootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: {
+        bootstrap_code: sessionData.wearer_bootstrap_code,
+        role: "wearer",
+      },
+    });
+    expect(wearerBootRes.statusCode).toBe(200);
+    const wearerCookie = extractCookie(wearerBootRes, "wearerkey_session_wearer");
+    expect(wearerCookie).toBeTruthy();
+
+    // 3. Wearer mints Helper link using wearer session cookie
     const helperLinkRes = await app.inject({
       method: "POST",
       url: "/api/wearer/helper-link",
       headers: {
-        Authorization: `Bearer ${wearerToken}`
-      }
+        cookie: wearerCookie,
+      },
     });
 
     expect(helperLinkRes.statusCode).toBe(200);
-    const helperToken = helperLinkRes.json().helper_token;
-    expect(helperToken).toBeDefined();
-    expect(helperToken).not.toBe(wearerToken);
+    const helperLinkData = helperLinkRes.json();
+    expect(helperLinkData.helper_bootstrap_code).toBeDefined();
+    expect(helperLinkData.helper_url).toContain("#bootstrap=");
 
-    // 3. Helper opens session - PROVE PRIVACY BOUNDARY: helper cannot see wearer photo
+    // 4. Helper redeems bootstrap code to obtain helper session cookie
+    const helperBootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: {
+        bootstrap_code: helperLinkData.helper_bootstrap_code,
+        role: "helper",
+      },
+    });
+    expect(helperBootRes.statusCode).toBe(200);
+    const helperCookie = extractCookie(helperBootRes, "wearerkey_session_helper");
+    expect(helperCookie).toBeTruthy();
+
+    // 5. Helper opens session - PROVE PRIVACY BOUNDARY: helper cannot see wearer photo
     const helperViewRes = await app.inject({
       method: "GET",
       url: "/api/helper/session",
       headers: {
-        Authorization: `Bearer ${helperToken}`
-      }
+        cookie: helperCookie,
+      },
     });
 
     expect(helperViewRes.statusCode).toBe(200);
@@ -95,13 +136,13 @@ describe("WearerKey End-to-End API Integration", () => {
     expect((helperView as any).source_file_id).toBeUndefined();
     expect((helperView as any).source_url).toBeUndefined();
 
-    // 4. Wearer view
+    // 6. Wearer view with wearer cookie
     const wearerViewRes = await app.inject({
       method: "GET",
       url: "/api/wearer/session",
       headers: {
-        Authorization: `Bearer ${wearerToken}`
-      }
+        cookie: wearerCookie,
+      },
     });
 
     expect(wearerViewRes.statusCode).toBe(200);
@@ -109,25 +150,25 @@ describe("WearerKey End-to-End API Integration", () => {
     expect(wearerView.id).toBe(sessionData.session_id);
     expect(wearerView.proposals).toHaveLength(0);
 
-    // 5. Revocation - Wearer revokes session
+    // 7. Revocation - Wearer revokes session
     const revokeRes = await app.inject({
       method: "DELETE",
       url: "/api/wearer/session",
       headers: {
-        Authorization: `Bearer ${wearerToken}`
-      }
+        cookie: wearerCookie,
+      },
     });
 
     expect(revokeRes.statusCode).toBe(200);
     expect(revokeRes.json().status).toBe("REVOKED");
 
-    // 6. Accessing revoked session fails closed with HTTP 410
+    // 8. Accessing revoked session fails closed with HTTP 410
     const revokedAccessRes = await app.inject({
       method: "GET",
       url: "/api/helper/session",
       headers: {
-        Authorization: `Bearer ${helperToken}`
-      }
+        cookie: helperCookie,
+      },
     });
 
     expect(revokedAccessRes.statusCode).toBe(410);
@@ -136,23 +177,47 @@ describe("WearerKey End-to-End API Integration", () => {
   it("POST /api/judge/seed creates an immediate exploratory session with recorded V4 result", async () => {
     const seedRes = await app.inject({
       method: "POST",
-      url: "/api/judge/seed"
+      url: "/api/judge/seed",
     });
 
     expect(seedRes.statusCode).toBe(201);
     const seedData = seedRes.json();
     expect(seedData.session_id).toBeDefined();
-    expect(seedData.wearer_url).toContain("/wearer/");
-    expect(seedData.helper_url).toContain("/helper/");
+    expect(seedData.wearer_url).toContain("/wearer#bootstrap=");
+    expect(seedData.helper_url).toContain("/helper#bootstrap=");
     expect(seedData.mode).toBe("RECORDED_LIVE_RESULT");
+
+    // Redeem wearer bootstrap
+    const wearerBootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: {
+        bootstrap_code: seedData.wearer_bootstrap_code,
+        role: "wearer",
+      },
+    });
+    expect(wearerBootRes.statusCode).toBe(200);
+    const wearerCookie = extractCookie(wearerBootRes, "wearerkey_session_wearer");
+
+    // Redeem helper bootstrap
+    const helperBootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: {
+        bootstrap_code: seedData.helper_bootstrap_code,
+        role: "helper",
+      },
+    });
+    expect(helperBootRes.statusCode).toBe(200);
+    const helperCookie = extractCookie(helperBootRes, "wearerkey_session_helper");
 
     // Check Wearer view of seeded proposal
     const wearerView = await app.inject({
       method: "GET",
       url: "/api/wearer/session",
       headers: {
-        Authorization: `Bearer ${seedData.wearer_token}`
-      }
+        cookie: wearerCookie,
+      },
     });
 
     expect(wearerView.statusCode).toBe(200);
@@ -168,8 +233,8 @@ describe("WearerKey End-to-End API Integration", () => {
       method: "GET",
       url: "/api/helper/session",
       headers: {
-        Authorization: `Bearer ${seedData.helper_token}`
-      }
+        cookie: helperCookie,
+      },
     });
 
     expect(helperView.statusCode).toBe(200);
@@ -186,8 +251,8 @@ describe("WearerKey End-to-End API Integration", () => {
       method: "GET",
       url: "/api/wearer/session/source",
       headers: {
-        Authorization: `Bearer ${seedData.wearer_token}`
-      }
+        cookie: wearerCookie,
+      },
     });
     expect(wearerSourceRes.statusCode).toBe(200);
     expect(wearerSourceRes.headers["content-type"]).toBe("image/png");
@@ -196,10 +261,11 @@ describe("WearerKey End-to-End API Integration", () => {
       method: "GET",
       url: "/api/wearer/session/source",
       headers: {
-        Authorization: `Bearer ${seedData.helper_token}`
-      }
+        cookie: helperCookie,
+      },
     });
-    expect(helperSourceAttempt.statusCode).toBe(403);
+    // Helper cannot access wearer route -> 401 or 403
+    expect([401, 403]).toContain(helperSourceAttempt.statusCode);
 
     // Check Result Stream endpoint: Wearer has access, Helper is blocked
     const proposalId = wData.proposals[0].id;
@@ -207,8 +273,8 @@ describe("WearerKey End-to-End API Integration", () => {
       method: "GET",
       url: `/api/wearer/proposals/${proposalId}/result`,
       headers: {
-        Authorization: `Bearer ${seedData.wearer_token}`
-      }
+        cookie: wearerCookie,
+      },
     });
     expect(wearerResultRes.statusCode).toBe(200);
     expect(wearerResultRes.headers["content-type"]).toBe("image/png");
@@ -217,18 +283,18 @@ describe("WearerKey End-to-End API Integration", () => {
       method: "GET",
       url: `/api/wearer/proposals/${proposalId}/result`,
       headers: {
-        Authorization: `Bearer ${seedData.helper_token}`
-      }
+        cookie: helperCookie,
+      },
     });
-    expect(helperResultAttempt.statusCode).toBe(403);
+    expect([401, 403]).toContain(helperResultAttempt.statusCode);
 
     // Check Wearer Scoped Privacy & Deletion Receipt
     const receiptRes = await app.inject({
       method: "GET",
       url: "/api/wearer/receipt",
       headers: {
-        Authorization: `Bearer ${seedData.wearer_token}`
-      }
+        cookie: wearerCookie,
+      },
     });
     expect(receiptRes.statusCode).toBe(200);
     const receiptData = receiptRes.json();
@@ -238,28 +304,28 @@ describe("WearerKey End-to-End API Integration", () => {
     expect(receiptData.receipt_hmac.algorithm).toBe("HMAC-SHA256");
   });
 
-  it("Enforces capability authorization on SSE /api/events", async () => {
-    // 1. Missing token -> 401
-    const noTokenRes = await app.inject({
+  it("Enforces session cookie authentication on SSE /api/events", async () => {
+    // 1. Missing cookie -> 401
+    const noCookieRes = await app.inject({
       method: "GET",
-      url: "/api/events"
+      url: "/api/events",
     });
-    expect(noTokenRes.statusCode).toBe(401);
-    expect(noTokenRes.json().error).toBe("UNAUTHORIZED");
+    expect(noCookieRes.statusCode).toBe(401);
+    expect(noCookieRes.json().error).toBe("UNAUTHORIZED");
 
-    // 2. Invalid token -> 401
-    const badTokenRes = await app.inject({
+    // 2. Invalid cookie -> 401
+    const badCookieRes = await app.inject({
       method: "GET",
       url: "/api/events",
       headers: {
-        Authorization: "Bearer totally_invalid_token_12345"
-      }
+        cookie: "wearerkey_session=invalid_token_12345",
+      },
     });
-    expect(badTokenRes.statusCode).toBe(401);
-    expect(badTokenRes.json().error).toBe("UNAUTHORIZED");
+    expect(badCookieRes.statusCode).toBe(401);
+    expect(badCookieRes.json().error).toBe("UNAUTHORIZED");
   });
 
-  it("POST /api/auth/bootstrap exchanges capability token for secure HttpOnly cookie", async () => {
+  it("POST /api/auth/bootstrap exchanges single-use bootstrap code for secure HttpOnly cookie", async () => {
     // 1. Create a session
     const createRes = await app.inject({
       method: "POST",
@@ -269,20 +335,20 @@ describe("WearerKey End-to-End API Integration", () => {
         allowed_categories: ["upper_body", "outer"],
         max_proposals: 3,
         expires_in_hours: 24,
-        gift_mode: false
-      }
+        gift_mode: false,
+      },
     });
     expect(createRes.statusCode).toBe(201);
-    const { wearer_token, session_id } = createRes.json();
+    const { wearer_bootstrap_code, session_id } = createRes.json();
 
     // 2. Bootstrap wearer session
     const bootstrapRes = await app.inject({
       method: "POST",
       url: "/api/auth/bootstrap",
       payload: {
-        token: wearer_token,
-        role: "wearer"
-      }
+        bootstrap_code: wearer_bootstrap_code,
+        role: "wearer",
+      },
     });
     expect(bootstrapRes.statusCode).toBe(200);
     const bootData = bootstrapRes.json();
@@ -293,7 +359,7 @@ describe("WearerKey End-to-End API Integration", () => {
     // Verify Set-Cookie header contains HttpOnly wearerkey_session cookie
     const setCookie = bootstrapRes.headers["set-cookie"];
     expect(setCookie).toBeDefined();
-    expect(String(setCookie)).toContain("wearerkey_session=");
+    expect(String(setCookie)).toContain("wearerkey_session");
     expect(String(setCookie)).toContain("HttpOnly");
   });
 
@@ -301,14 +367,24 @@ describe("WearerKey End-to-End API Integration", () => {
     // 1. Seed a session to get a real signed receipt
     const seedRes = await app.inject({
       method: "POST",
-      url: "/api/judge/seed"
+      url: "/api/judge/seed",
     });
-    const { wearer_token } = seedRes.json();
+    const { wearer_bootstrap_code } = seedRes.json();
+
+    const bootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: {
+        bootstrap_code: wearer_bootstrap_code,
+        role: "wearer",
+      },
+    });
+    const wearerCookie = extractCookie(bootRes, "wearerkey_session_wearer");
 
     const receiptRes = await app.inject({
       method: "GET",
       url: "/api/wearer/receipt",
-      headers: { Authorization: `Bearer ${wearer_token}` }
+      headers: { cookie: wearerCookie },
     });
     expect(receiptRes.statusCode).toBe(200);
     const receipt = receiptRes.json();
@@ -323,8 +399,8 @@ describe("WearerKey End-to-End API Integration", () => {
         receipt,
         signature: hmac.signature,
         signed_at: hmac.signed_at,
-        key_id: hmac.key_id
-      }
+        key_id: hmac.key_id,
+      },
     });
     expect(verifyValidRes.statusCode).toBe(200);
     expect(verifyValidRes.json().valid).toBe(true);
@@ -338,8 +414,8 @@ describe("WearerKey End-to-End API Integration", () => {
         receipt: tamperedReceipt,
         signature: hmac.signature,
         signed_at: hmac.signed_at,
-        key_id: hmac.key_id
-      }
+        key_id: hmac.key_id,
+      },
     });
     expect(verifyTamperedRes.statusCode).toBe(200);
     expect(verifyTamperedRes.json().valid).toBe(false);
@@ -354,8 +430,8 @@ describe("WearerKey End-to-End API Integration", () => {
         allowed_categories: ["outer", "upper_body"],
         max_proposals: 3,
         expires_in_hours: 1,
-        gift_mode: false
-      }
+        gift_mode: false,
+      },
     });
     expect(createRes.statusCode).toBe(201);
     const { wearer_bootstrap_code, wearer_url } = createRes.json();
@@ -368,8 +444,8 @@ describe("WearerKey End-to-End API Integration", () => {
       url: "/api/auth/bootstrap",
       payload: {
         bootstrap_code: wearer_bootstrap_code,
-        role: "wearer"
-      }
+        role: "wearer",
+      },
     });
     expect(firstRedeem.statusCode).toBe(200);
     expect(firstRedeem.json().authenticated).toBe(true);
@@ -381,31 +457,118 @@ describe("WearerKey End-to-End API Integration", () => {
       url: "/api/auth/bootstrap",
       payload: {
         bootstrap_code: wearer_bootstrap_code,
-        role: "wearer"
-      }
+        role: "wearer",
+      },
     });
     expect(replayRedeem.statusCode).toBe(409);
     expect(replayRedeem.json().error).toBe("BOOTSTRAP_CODE_ALREADY_USED");
   });
 
-  it("P0-A: Purge retry and final receipt remain reachable after session revocation", async () => {
-    // 1. Create session and seed a proposal
+  it("P0-B: Concurrency regression test — parallel bootstrap calls guarantee exactly one 200 and one 409", async () => {
+    // Create a new session with fresh bootstrap code
     const createRes = await app.inject({
       method: "POST",
       url: "/api/sessions",
       payload: {
         allowed_categories: ["outer"],
         max_proposals: 2,
-        expires_in_hours: 1
-      }
+        expires_in_hours: 1,
+      },
     });
-    const { session_id, wearer_token } = createRes.json();
+    expect(createRes.statusCode).toBe(201);
+    const { wearer_bootstrap_code } = createRes.json();
+
+    // Dispatch two concurrent bootstrap requests with the exact same code
+    const [res1, res2] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/api/auth/bootstrap",
+        payload: {
+          bootstrap_code: wearer_bootstrap_code,
+          role: "wearer",
+        },
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/auth/bootstrap",
+        payload: {
+          bootstrap_code: wearer_bootstrap_code,
+          role: "wearer",
+        },
+      }),
+    ]);
+
+    const statusCodes = [res1.statusCode, res2.statusCode].sort();
+    expect(statusCodes).toEqual([200, 409]);
+  });
+
+  it("Cross-role boundary: wearer cookie cannot access helper routes, and helper cannot access wearer routes", async () => {
+    // 1. Seed session to get both roles
+    const seedRes = await app.inject({
+      method: "POST",
+      url: "/api/judge/seed",
+    });
+    const { wearer_bootstrap_code, helper_bootstrap_code } = seedRes.json();
+
+    const wearerBoot = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { bootstrap_code: wearer_bootstrap_code, role: "wearer" },
+    });
+    const wearerCookie = extractCookie(wearerBoot, "wearerkey_session_wearer");
+
+    const helperBoot = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { bootstrap_code: helper_bootstrap_code, role: "helper" },
+    });
+    const helperCookie = extractCookie(helperBoot, "wearerkey_session_helper");
+
+    // 2. Wearer cookie attempting helper-only route -> 401 or 403
+    const wearerToHelper = await app.inject({
+      method: "GET",
+      url: "/api/helper/session",
+      headers: { cookie: wearerCookie },
+    });
+    expect([401, 403]).toContain(wearerToHelper.statusCode);
+
+    // 3. Helper cookie attempting wearer-only route -> 401 or 403
+    const helperToWearer = await app.inject({
+      method: "GET",
+      url: "/api/wearer/session",
+      headers: { cookie: helperCookie },
+    });
+    expect([401, 403]).toContain(helperToWearer.statusCode);
+  });
+
+  it("P0-A: Purge retry and final receipt remain reachable after session revocation", async () => {
+    // 1. Create session and bootstrap
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {
+        allowed_categories: ["outer"],
+        max_proposals: 2,
+        expires_in_hours: 1,
+      },
+    });
+    const { session_id, wearer_bootstrap_code } = createRes.json();
+
+    const bootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: {
+        bootstrap_code: wearer_bootstrap_code,
+        role: "wearer",
+      },
+    });
+    const wearerCookie = extractCookie(bootRes, "wearerkey_session_wearer");
 
     // 2. Revoke session -> enters REVOKED state
     const revokeRes = await app.inject({
       method: "DELETE",
       url: "/api/wearer/session",
-      headers: { Authorization: `Bearer ${wearer_token}` }
+      headers: { cookie: wearerCookie },
     });
     expect(revokeRes.statusCode).toBe(200);
     const receipt = revokeRes.json();
@@ -415,7 +578,7 @@ describe("WearerKey End-to-End API Integration", () => {
     const blockedRoute = await app.inject({
       method: "POST",
       url: "/api/wearer/helper-link",
-      headers: { Authorization: `Bearer ${wearer_token}` }
+      headers: { cookie: wearerCookie },
     });
     expect(blockedRoute.statusCode).toBe(410);
     expect(blockedRoute.json().error).toBe("SESSION_REVOKED");
@@ -424,7 +587,7 @@ describe("WearerKey End-to-End API Integration", () => {
     const retryRes = await app.inject({
       method: "POST",
       url: "/api/wearer/session/retry-purge",
-      headers: { Authorization: `Bearer ${wearer_token}` }
+      headers: { cookie: wearerCookie },
     });
     expect(retryRes.statusCode).toBe(200);
     expect(retryRes.json().overall_deletion_status).toBeDefined();
@@ -433,45 +596,61 @@ describe("WearerKey End-to-End API Integration", () => {
     const getReceiptRes = await app.inject({
       method: "GET",
       url: "/api/receipts",
-      headers: { Authorization: `Bearer ${wearer_token}` }
+      headers: { cookie: wearerCookie },
     });
     expect(getReceiptRes.statusCode).toBe(200);
     expect(getReceiptRes.json().session_id).toBe(session_id);
     expect(getReceiptRes.json().receipt_hmac).toBeDefined();
   });
 
-  it("P0-C: Redacts secrets, capability tokens, and cookies from logs", async () => {
-    // Verify server config includes all required redaction keys
-    const testToken = "test_sensitive_capability_token_123456";
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/auth/bootstrap",
-      headers: {
-        Authorization: `Bearer ${testToken}`,
-        "X-Capability-Token": testToken,
-        "X-Purge-Recovery-Token": testToken
-      },
-      payload: {
-        bootstrap_code: testToken
+  it("Rate limiting: triggers HTTP 429 when rate limit threshold is exceeded", async () => {
+    // Using header x-test-rate-limit: true
+    // Bootstrap rate limit is 30/min
+    // We send 35 rapid requests with x-test-rate-limit: true
+    let hitRateLimit = false;
+    for (let i = 0; i < 35; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/auth/bootstrap",
+        headers: {
+          "x-test-rate-limit": "true",
+        },
+        payload: {
+          bootstrap_code: "rate_limit_test_code_123456",
+        },
+      });
+      if (res.statusCode === 429) {
+        hitRateLimit = true;
+        expect(res.json().error).toBe("TOO_MANY_REQUESTS");
+        break;
       }
-    });
-    // Regardless of response, check that redaction paths are configured on the Fastify instance
-    expect(res.statusCode).toBeDefined();
+    }
+    expect(hitRateLimit).toBe(true);
   });
 
   it("Enforces SSRF domain restriction on remote result proxy", async () => {
     // Seed judge session
     const seedRes = await app.inject({
       method: "POST",
-      url: "/api/judge/seed"
+      url: "/api/judge/seed",
     });
-    const { wearer_token } = seedRes.json();
+    const { wearer_bootstrap_code } = seedRes.json();
+
+    const bootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: {
+        bootstrap_code: wearer_bootstrap_code,
+        role: "wearer",
+      },
+    });
+    const wearerCookie = extractCookie(bootRes, "wearerkey_session_wearer");
 
     // Query session to get proposal ID
     const sessionRes = await app.inject({
       method: "GET",
       url: "/api/wearer/session",
-      headers: { Authorization: `Bearer ${wearer_token}` }
+      headers: { cookie: wearerCookie },
     });
     const proposalId = sessionRes.json().proposals[0].id;
 
@@ -479,7 +658,7 @@ describe("WearerKey End-to-End API Integration", () => {
     const validResultRes = await app.inject({
       method: "GET",
       url: `/api/wearer/proposals/${proposalId}/result`,
-      headers: { Authorization: `Bearer ${wearer_token}` }
+      headers: { cookie: wearerCookie },
     });
     expect([200, 302]).toContain(validResultRes.statusCode);
   });

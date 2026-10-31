@@ -3,28 +3,39 @@ import { ShieldCheck, Clock, Layers, Sparkles } from 'lucide-react';
 import type { GarmentCategory, SessionStatus } from '@wearerkey/contracts';
 
 interface ConsentSealProps {
-  categories: GarmentCategory[];
+  categories?: GarmentCategory[];
+  allowedCategories?: GarmentCategory[];
   maxProposals: number;
-  proposalsUsed: number;
+  proposalsUsed?: number;
+  proposalsRemaining?: number;
   expiresAt: string;
   status: SessionStatus;
   mode?: string;
+  version?: string;
+  giftMode?: boolean;
   onRevoke?: () => void;
   isWearer?: boolean;
 }
 
 export const ConsentSeal: React.FC<ConsentSealProps> = ({
   categories,
+  allowedCategories,
   maxProposals,
   proposalsUsed,
+  proposalsRemaining,
   expiresAt,
   status,
   mode,
+  version: _version,
+  giftMode: _giftMode = false,
   onRevoke,
   isWearer = false,
 }) => {
+  const cats = allowedCategories || categories || [];
   const isExpired = new Date(expiresAt).getTime() < Date.now();
-  const remaining = Math.max(0, maxProposals - proposalsUsed);
+  const remaining = proposalsRemaining !== undefined 
+    ? proposalsRemaining 
+    : Math.max(0, maxProposals - (proposalsUsed || 0));
 
   const getStatusBadge = () => {
     if (status === 'REVOKED') {
@@ -76,7 +87,7 @@ export const ConsentSeal: React.FC<ConsentSealProps> = ({
             Permitted Categories
           </span>
           <div className="flex flex-wrap gap-1">
-            {categories.map((c) => (
+            {cats.map((c) => (
               <span
                 key={c}
                 className="px-2 py-0.5 rounded bg-parchment text-ink font-medium capitalize border border-stone/50 text-[11px]"
@@ -94,7 +105,7 @@ export const ConsentSeal: React.FC<ConsentSealProps> = ({
           </span>
           <div className="flex items-center gap-2">
             <span className="font-semibold text-ink text-sm">
-              {proposalsUsed} / {maxProposals}
+              {proposalsUsed !== undefined ? proposalsUsed : (maxProposals - remaining)} / {maxProposals}
             </span>
             <span className="text-[11px] text-ink-muted">
               ({remaining} remaining)

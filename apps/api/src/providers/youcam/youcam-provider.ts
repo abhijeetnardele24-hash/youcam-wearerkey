@@ -113,11 +113,16 @@ export class YouCamClothesProvider implements ClothesTryOnProvider {
    * Create asynchronous Clothes V4 task
    */
   async createTask(input: ClothesTaskInput): Promise<ProviderTask> {
-    const payload = {
+    const payload: Record<string, any> = {
       src_file_id: input.srcFileId,
       ref_file_id: input.refFileId,
-      garment_category: input.garmentCategory
+      garment_category: input.garmentCategory,
+      filter_multi_person: input.filterMultiPerson || "strict"
     };
+
+    if (input.changeShoes !== undefined) {
+      payload.change_shoes = input.changeShoes;
+    }
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,
@@ -226,8 +231,22 @@ export class YouCamClothesProvider implements ClothesTryOnProvider {
       }
 
       const taskStatus = (data?.data?.task_status || data?.task_status || data?.status || "").toUpperCase();
-      const results = data?.data?.results || data?.results;
-      const resultUrl = results?.[0]?.url || data?.data?.result_url || data?.result_url;
+
+      // Support official documented successful response containing data.results.url, with defensive parsing
+      let resultUrl: string | undefined;
+      if (typeof data?.data?.results?.url === "string") {
+        resultUrl = data.data.results.url;
+      } else if (Array.isArray(data?.data?.results) && typeof data.data.results[0]?.url === "string") {
+        resultUrl = data.data.results[0].url;
+      } else if (typeof data?.data?.result_url === "string") {
+        resultUrl = data.data.result_url;
+      } else if (typeof data?.results?.url === "string") {
+        resultUrl = data.results.url;
+      } else if (Array.isArray(data?.results) && typeof data.results[0]?.url === "string") {
+        resultUrl = data.results[0].url;
+      } else if (typeof data?.result_url === "string") {
+        resultUrl = data.result_url;
+      }
 
       if (taskStatus === "SUCCESS" || taskStatus === "SUCCEEDED") {
         if (!resultUrl) {
@@ -287,7 +306,8 @@ export class YouCamClothesProvider implements ClothesTryOnProvider {
         return {
           taskId,
           confirmed: true,
-          providerStatus: "DELETED"
+          providerStatus: "DELETED",
+          deletionMode: "GENUINE_PROVIDER_CONFIRMED"
         };
       }
 
@@ -306,7 +326,8 @@ export class YouCamClothesProvider implements ClothesTryOnProvider {
         return {
           taskId,
           confirmed: true,
-          providerStatus: "DELETED"
+          providerStatus: "DELETED",
+          deletionMode: "GENUINE_PROVIDER_CONFIRMED"
         };
       }
 

@@ -4,7 +4,7 @@ import type { Decision } from '@wearerkey/contracts';
 
 interface DecisionSlipProps {
   proposalId: string;
-  garmentTitle: string;
+  garmentTitle?: string;
   currentDecision?: Decision | null;
   currentNote?: string | null;
   onDecide: (decision: Decision, note?: string) => Promise<void>;
@@ -13,7 +13,7 @@ interface DecisionSlipProps {
 
 export const DecisionSlip: React.FC<DecisionSlipProps> = ({
   proposalId,
-  garmentTitle,
+  garmentTitle = 'Garment',
   currentDecision,
   currentNote,
   onDecide,

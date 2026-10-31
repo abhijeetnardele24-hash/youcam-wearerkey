@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { ConsentSeal } from '../components/ConsentSeal';
@@ -23,7 +23,6 @@ import {
 } from 'lucide-react';
 
 export const WearerRoomPage: React.FC = () => {
-  const { token: routeToken } = useParams<{ token: string }>();
   const queryClient = useQueryClient();
   const [copiedLink, setCopiedLink] = useState(false);
   const [helperUrl, setHelperUrl] = useState<string | null>(null);
@@ -32,24 +31,7 @@ export const WearerRoomPage: React.FC = () => {
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
   const [showSourcePhoto, setShowSourcePhoto] = useState(false);
 
-  // Single-use capability token: read from route or URL fragment without storing in sessionStorage
-  const [token] = useState<string>(() => {
-    if (routeToken) return routeToken;
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash;
-      if (hash.startsWith('#bootstrap=')) {
-        return hash.substring(11);
-      }
-      if (hash.startsWith('#token=')) {
-        return hash.substring(7);
-      }
-      if (hash.startsWith('#') && hash.length > 10) {
-        return hash.substring(1);
-      }
-    }
-    return '';
-  });
-
+  // Single-use capability token: read strictly from URL fragment without storing in sessionStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
@@ -75,11 +57,9 @@ export const WearerRoomPage: React.FC = () => {
               setBootstrapError(err?.message || 'Bootstrap authentication failed.');
             }
           });
-      } else if (token) {
-        api.bootstrap(token, 'wearer').catch(() => {});
       }
     }
-  }, [token, queryClient]);
+  }, [queryClient]);
 
   // Handle ESC key for modal
   useEffect(() => {
@@ -98,13 +78,13 @@ export const WearerRoomPage: React.FC = () => {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['wearer-session', token],
-    queryFn: () => api.getWearerSession(token || undefined),
+    queryKey: ['wearer-session'],
+    queryFn: () => api.getWearerSession(),
     refetchInterval: 3000,
   });
 
   const generateHelperLinkMutation = useMutation({
-    mutationFn: () => api.createHelperLink(token || undefined),
+    mutationFn: () => api.createHelperLink(),
     onSuccess: (data) => {
       setHelperUrl(data.helper_url);
       setActionError(null);
@@ -115,7 +95,7 @@ export const WearerRoomPage: React.FC = () => {
   });
 
   const retryPurgeMutation = useMutation({
-    mutationFn: () => api.retryPurge(token || undefined),
+    mutationFn: () => api.retryPurge(),
     onSuccess: () => {
       setActionError(null);
       refetch();
@@ -126,7 +106,7 @@ export const WearerRoomPage: React.FC = () => {
   });
 
   const revokeMutation = useMutation({
-    mutationFn: () => api.revokeSession(token || undefined),
+    mutationFn: () => api.revokeSession(),
     onSuccess: () => {
       setIsRevokeModalOpen(false);
       refetch();
@@ -146,8 +126,8 @@ export const WearerRoomPage: React.FC = () => {
   };
 
   const handleDecide = async (proposalId: string, decision: Decision, note?: string) => {
-    await api.decideProposal(token || undefined, proposalId, { decision, note });
-    queryClient.invalidateQueries({ queryKey: ['wearer-session', token] });
+    await api.decideProposal(proposalId, { decision, note });
+    queryClient.invalidateQueries({ queryKey: ['wearer-session'] });
   };
 
   if (isLoading) {
@@ -181,13 +161,13 @@ export const WearerRoomPage: React.FC = () => {
     return (
       <div className="max-w-lg mx-auto px-4 py-16 text-center">
         <ShieldAlert className="w-12 h-12 text-rust mx-auto mb-3" />
-        <h2 className="font-serif text-xl font-bold text-ink mb-2">Invalid or Expired Pass</h2>
+        <h2 className="font-serif text-xl font-bold text-ink mb-2">Access Denied or Session Expired</h2>
         <p className="text-xs text-ink-muted mb-6">
-          This capability token could not be verified or has been revoked.
+          {(error as any)?.message || 'This private room link is invalid, expired, or has been revoked.'}
         </p>
         <Link
           to="/create"
-          className="inline-block px-4 py-2 bg-wearer text-white text-xs font-semibold rounded"
+          className="inline-block px-4 py-2 bg-wearer text-white text-xs font-semibold rounded hover:bg-wearer-dark transition-colors"
         >
           Create New Pass
         </Link>
@@ -195,338 +175,295 @@ export const WearerRoomPage: React.FC = () => {
     );
   }
 
-  if (session.status === 'REVOKED') {
-    return (
-      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-6">
-        <div className="parcel-card p-8 bg-white border border-stone space-y-4">
-          <ShieldAlert className="w-12 h-12 text-rust mx-auto" />
-          <h1 className="font-serif text-2xl font-bold text-ink">Try-On Pass Revoked</h1>
-          <p className="text-xs text-ink-muted max-w-md mx-auto leading-relaxed">
-            All local access credentials and preview buffers have been terminated. Remote provider deletion has been requested.
+  const isRevoked = session.status === 'REVOKED';
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+      {/* Top Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-stone">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-wearer inline-block" />
+            <h1 className="font-serif text-2xl sm:text-3xl font-bold text-ink">
+              Wearer Control Room
+            </h1>
+          </div>
+          <p className="text-xs text-ink-muted">
+            Private mirror preview • Only you can see your body reference and try-on results
           </p>
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+        </div>
+
+        <div className="flex items-center gap-2">
+          {!isRevoked && (
+            <button
+              type="button"
+              onClick={() => setIsRevokeModalOpen(true)}
+              className="px-3.5 py-1.5 rounded border border-rust text-rust hover:bg-rust-light text-xs font-semibold transition-colors flex items-center gap-1.5"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span>Revoke Pass & Purge Data</span>
+            </button>
+          )}
+          {isRevoked && (
             <Link
               to="/receipt"
-              className="px-4 py-2 bg-wearer text-white rounded text-xs font-semibold hover:bg-wearer-dark transition-colors flex items-center gap-1.5"
+              className="px-3.5 py-1.5 rounded bg-stone-light/60 hover:bg-stone text-xs font-semibold text-ink flex items-center gap-1.5 transition-colors"
             >
-              <FileText className="w-4 h-4" />
-              <span>View Signed Audit Receipt</span>
+              <FileText className="w-3.5 h-3.5" />
+              <span>View Deletion Receipt</span>
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {actionError && (
+        <div className="p-3 rounded bg-rust-light border border-rust text-rust text-xs font-medium flex items-center justify-between">
+          <span>{actionError}</span>
+          <button type="button" onClick={() => setActionError(null)}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Revoked Notice */}
+      {isRevoked && (
+        <div className="p-4 rounded-lg bg-rust-light/40 border border-rust text-ink space-y-2">
+          <div className="flex items-center gap-2 text-rust font-semibold text-sm">
+            <Lock className="w-4 h-4" />
+            <span>Pass Revoked — Data Purge Initiated</span>
+          </div>
+          <p className="text-xs text-ink-muted leading-relaxed">
+            All helper access has been revoked. In-memory reference image buffers have been purged,
+            and automated deletion requests have been dispatched to YouCam's File and Task APIs.
+          </p>
+          <div className="pt-2 flex items-center gap-3">
+            <Link
+              to="/receipt"
+              className="text-xs font-semibold text-wearer hover:underline flex items-center gap-1"
+            >
+              <span>Inspect Signed Deletion Receipt</span>
+              <ExternalLink className="w-3 h-3" />
             </Link>
             <button
               type="button"
               onClick={() => retryPurgeMutation.mutate()}
               disabled={retryPurgeMutation.isPending}
-              className="px-4 py-2 border border-stone bg-white text-ink rounded text-xs font-semibold hover:bg-stone-light/40 transition-colors flex items-center gap-1.5"
+              className="text-xs font-semibold text-ink-muted hover:text-ink flex items-center gap-1 disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${retryPurgeMutation.isPending ? 'animate-spin' : ''}`} />
-              <span>Retry Remote Purge</span>
+              <RefreshCw className={`w-3 h-3 ${retryPurgeMutation.isPending ? 'animate-spin' : ''}`} />
+              <span>Retry Purge Verification</span>
             </button>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-      {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone">
-        <div>
-          <div className="flex items-center gap-2 text-wearer font-bold text-xs uppercase tracking-wider mb-1">
-            <Lock className="w-4 h-4" />
-            <span>Private Wearer Room</span>
-          </div>
-          <h1 className="font-serif text-2xl sm:text-3xl font-bold text-ink">
-            Your Try-On Control Room
-          </h1>
-          <p className="text-xs text-ink-muted mt-0.5">
-            Your reference photo and virtual try-ons are visible only on this screen.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link
-            to={`/receipt/${token}`}
-            className="px-3 py-1.5 rounded border border-stone bg-white hover:bg-stone-light/40 text-xs font-semibold text-ink flex items-center gap-1.5 transition-colors"
-          >
-            <FileText className="w-3.5 h-3.5 text-ink-subtle" />
-            <span>Audit Receipt</span>
-          </Link>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="p-2 rounded border border-stone bg-white hover:bg-stone-light/40 text-ink transition-colors"
-            title="Refresh session"
-            aria-label="Refresh session"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      <div aria-live="polite">
-        {actionError && (
-          <div className="p-3 rounded bg-rust-light border border-rust text-rust text-xs font-medium">
-            {actionError}
-          </div>
-        )}
-      </div>
-
-      {/* Visibility Rail */}
-      <VisibilityRail currentStage="review" />
-
-      {/* Active Consent Seal */}
-      <ConsentSeal
-        categories={session.allowed_categories}
-        maxProposals={session.max_proposals}
-        proposalsUsed={session.proposals_count}
-        expiresAt={session.expires_at}
-        status={session.status}
-        isWearer={true}
-        onRevoke={() => setIsRevokeModalOpen(true)}
-      />
-
-      {/* Wearer Reference Photo Card (Private to Wearer) */}
-      {session.source_uploaded && (
-        <div className="parcel-card p-4 bg-white border border-stone">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold text-ink">
-              <User className="w-4 h-4 text-wearer" />
-              <span>Your Reference Photo (Private to this room)</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowSourcePhoto(!showSourcePhoto)}
-              className="text-xs text-wearer hover:underline font-semibold"
-            >
-              {showSourcePhoto ? 'Hide Photo' : 'Inspect Photo'}
-            </button>
-          </div>
-          {showSourcePhoto && (
-            <div className="mt-3 pt-3 border-t border-stone-light flex flex-col sm:flex-row items-center gap-4">
-              <img
-                src={session.source_image_url || '/assets/sample_wearer_reference.png'}
-                alt="Wearer Reference"
-                className="w-32 h-44 object-cover rounded border border-stone"
-              />
-              <div className="text-xs text-ink-muted leading-relaxed">
-                <p className="font-semibold text-ink mb-1">Strict Isolation Notice</p>
-                This reference silhouette is stored in secure server memory and transmitted only to
-                YouCam AI Clothes V4. The helper receives <strong>no photo preview, no URL, and no capability</strong> to view this image.
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Helper Share Box */}
-      {session.status === 'ACTIVE' && (
-        <div className="parcel-card p-5 bg-helper-light/40 border-2 border-helper-border/40">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 text-helper font-bold text-xs uppercase tracking-wider mb-1">
-                <Share2 className="w-4 h-4" />
-                <span>Invite Your Helper or Stylist</span>
-              </div>
-              <p className="text-xs text-ink-muted max-w-lg">
-                Share this link with a friend, partner, or stylist. They can propose garments
-                matching your rules, but will <strong>never see your photo</strong>.
-              </p>
-            </div>
+      {/* Visibility Rail Component */}
+      <VisibilityRail role="wearer" giftMode={session.gift_mode} />
 
-            {!helperUrl ? (
-              <button
-                type="button"
-                onClick={() => generateHelperLinkMutation.mutate()}
-                disabled={generateHelperLinkMutation.isPending}
-                className="px-4 py-2.5 bg-helper hover:bg-helper-dark text-white rounded text-xs font-semibold transition-colors flex items-center gap-1.5 flex-shrink-0 shadow-sm"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>
-                  {generateHelperLinkMutation.isPending
-                    ? 'Minting Link...'
-                    : 'Generate Helper Link'}
-                </span>
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+      {/* Main Grid: Consent Seal & Helper Link Box */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Consent Seal */}
+        <div className="md:col-span-1">
+          <ConsentSeal
+            version={session.consent_version}
+            allowedCategories={session.allowed_categories}
+            maxProposals={session.max_proposals}
+            proposalsRemaining={session.proposals_remaining}
+            expiresAt={session.expires_at}
+            giftMode={session.gift_mode}
+            status={session.status}
+          />
+        </div>
+
+        {/* Helper Link Sharing Box */}
+        <div className="md:col-span-2 parcel-card p-6 bg-white space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-ink font-serif font-bold text-base">
+              <Share2 className="w-4 h-4 text-wearer" />
+              <span>Invite Shopping Companion</span>
+            </div>
+            <span className="text-[11px] font-semibold text-wearer bg-wearer-light px-2 py-0.5 rounded">
+              Zero Photo Leakage
+            </span>
+          </div>
+
+          <p className="text-xs text-ink-muted leading-relaxed">
+            Send this single-use capability link to your partner, friend, caregiver, or stylist. They can
+            propose garments from online stores matching your permitted categories, but{' '}
+            <strong className="text-ink">they will NEVER receive your photo or fitting renders.</strong>
+          </p>
+
+          {!helperUrl ? (
+            <button
+              type="button"
+              onClick={() => generateHelperLinkMutation.mutate()}
+              disabled={generateHelperLinkMutation.isPending || isRevoked}
+              className="px-4 py-2.5 bg-wearer hover:bg-wearer-dark text-white rounded text-xs font-semibold flex items-center gap-2 transition-colors disabled:opacity-50"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>
+                {generateHelperLinkMutation.isPending ? 'Generating Safe Link...' : 'Generate Helper Link'}
+              </span>
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
                 <input
                   type="text"
                   readOnly
                   value={helperUrl}
-                  className="px-3 py-1.5 text-xs rounded border border-stone bg-white font-mono flex-1 sm:w-64 select-all text-ink"
+                  className="flex-1 px-3 py-2 bg-stone-light/30 border border-stone rounded font-mono text-xs text-ink select-all focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={handleCopyLink}
-                  className="px-3 py-1.5 bg-helper hover:bg-helper-dark text-white rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                  className="px-4 py-2 bg-wearer hover:bg-wearer-dark text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0"
                 >
                   {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedLink ? 'Copied' : 'Copy'}</span>
                 </button>
               </div>
+              <p className="text-[11px] text-ink-subtle">
+                Single-use link. When opened, it binds to that browser and cannot be replayed.
+              </p>
+            </div>
+          )}
+
+          {/* Reference Photo Toggle */}
+          <div className="pt-4 border-t border-stone flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5 text-ink-muted">
+              <User className="w-3.5 h-3.5" />
+              <span>Reference Image Status:</span>
+              <span className="font-semibold text-wearer">Secure in-memory</span>
+            </div>
+            {session.source_image_url && (
+              <button
+                type="button"
+                onClick={() => setShowSourcePhoto(!showSourcePhoto)}
+                className="text-wearer hover:underline font-semibold"
+              >
+                {showSourcePhoto ? 'Hide Photo' : 'Preview My Photo'}
+              </button>
             )}
           </div>
-        </div>
-      )}
 
-      {/* Proposals Stream */}
-      <div className="space-y-6">
+          {showSourcePhoto && session.source_image_url && (
+            <div className="pt-2">
+              <img
+                src={session.source_image_url}
+                alt="Wearer private reference"
+                className="w-32 h-40 object-cover rounded border border-stone shadow-sm"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Proposals & Fitting Mirrors Section */}
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-serif text-xl font-bold text-ink">
-            Garment Proposals ({session.proposals.length})
+            Garment Proposals & Private Mirrors
           </h2>
-          <span className="text-xs text-ink-subtle">
-            {session.proposals_count} of {session.max_proposals} proposed
+          <span className="text-xs text-ink-muted">
+            {session.proposals.length} of {session.max_proposals} proposals received
           </span>
         </div>
 
         {session.proposals.length === 0 ? (
-          <div className="parcel-card p-10 text-center bg-white border border-stone">
-            <Sparkles className="w-8 h-8 text-stone-dark mx-auto mb-2 opacity-60" />
-            <h3 className="font-serif text-base font-bold text-ink mb-1">
-              No Proposals Yet
-            </h3>
-            <p className="text-xs text-ink-muted max-w-sm mx-auto mb-4">
-              Share the helper link above with your shopping companion to start receiving outfit
-              suggestions.
+          <div className="parcel-card p-12 text-center bg-white space-y-3">
+            <Sparkles className="w-8 h-8 text-ink-subtle mx-auto" />
+            <h3 className="font-serif text-base font-bold text-ink">Awaiting Garment Proposals</h3>
+            <p className="text-xs text-ink-muted max-w-md mx-auto leading-relaxed">
+              Share the Helper Link above with your shopping companion. When they find an item they
+              think will look great on you, their proposal will appear here for your private review.
             </p>
           </div>
         ) : (
-          <div className="space-y-8">
-            {session.proposals.map((proposal) => {
-              const hasResult = proposal.has_result && !!proposal.result_stream_url;
-              const isProcessing =
-                proposal.status === 'PROCESSING' || proposal.status === 'SUBMITTED';
-
-              return (
-                <div
-                  key={proposal.id}
-                  className="parcel-card p-5 sm:p-6 bg-white border-2 border-stone space-y-6"
-                >
-                  {/* Proposal Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-stone-light">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="seal-badge seal-helper capitalize text-[10px]">
-                          {proposal.garment_category.replace('_', ' ')}
-                        </span>
-                        <h3 className="font-serif font-bold text-base text-ink">
-                          {proposal.label}
-                        </h3>
-                      </div>
-                      {proposal.brand && (
-                        <p className="text-xs text-ink-muted italic mt-1">
-                          Brand: {proposal.brand}
-                        </p>
-                      )}
-                    </div>
-                    <span className="text-[11px] font-mono text-ink-subtle">
-                      Status: <strong className="text-ink">{proposal.status}</strong>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {session.proposals.map((proposal) => (
+              <div key={proposal.id} className="parcel-card p-5 bg-white space-y-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-ink-subtle block">
+                      {proposal.garment_category}
                     </span>
+                    <h4 className="font-serif text-base font-bold text-ink">{proposal.label}</h4>
+                    {proposal.brand && (
+                      <p className="text-xs text-ink-muted">Brand: {proposal.brand}</p>
+                    )}
                   </div>
-
-                  {/* Two column: Garment Info & Private Mirror */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                    {/* Left: Garment proposed */}
-                    <div className="space-y-3">
-                      <span className="text-xs font-bold uppercase tracking-wider text-ink-muted block">
-                        Proposed Garment
-                      </span>
-                      <div className="parcel-border rounded bg-parchment-100 p-2 text-center">
-                        {proposal.garment_preview_url ? (
-                          <img
-                            src={proposal.garment_preview_url}
-                            alt={proposal.label}
-                            className="max-h-64 mx-auto rounded object-contain"
-                          />
-                        ) : (
-                          <div className="h-44 flex items-center justify-center text-xs text-ink-muted">
-                            Garment preview attached
-                          </div>
-                        )}
-                      </div>
-                      {proposal.product_url && (
-                        <a
-                          href={proposal.product_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-wearer hover:underline font-medium"
-                        >
-                          <span>View Product Link</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                    </div>
-
-                    {/* Right: Private Mirror */}
-                    <div className="space-y-3">
-                      <span className="text-xs font-bold uppercase tracking-wider text-wearer block">
-                        Private Fitting Result (YouCam Clothes V4)
-                      </span>
-                      <PrivateMirror
-                        resultImageUrl={proposal.result_stream_url || undefined}
-                        garmentTitle={proposal.label}
-                        isProcessing={isProcessing}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Decision Slip */}
-                  {hasResult && (
-                    <div className="pt-2">
-                      <DecisionSlip
-                        proposalId={proposal.id}
-                        garmentTitle={proposal.label}
-                        currentDecision={proposal.decision}
-                        currentNote={proposal.wearer_note}
-                        onDecide={(dec, note) => handleDecide(proposal.id, dec, note)}
-                        disabled={session.status !== 'ACTIVE'}
-                      />
-                    </div>
-                  )}
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded capitalize ${
+                      proposal.status === 'SUCCEEDED'
+                        ? 'bg-wearer-light text-wearer'
+                        : proposal.status === 'FAILED'
+                        ? 'bg-rust-light text-rust'
+                        : 'bg-stone-light/60 text-ink-muted'
+                    }`}
+                  >
+                    {proposal.status.toLowerCase()}
+                  </span>
                 </div>
-              );
-            })}
+
+                {/* Private Mirror Visual */}
+                <PrivateMirror
+                  resultUrl={proposal.result_stream_url}
+                  garmentPreviewUrl={proposal.garment_preview_url}
+                  status={proposal.status}
+                  label={proposal.label}
+                  failureMessage={proposal.failure_message_safe}
+                />
+
+                {/* Decision Slip */}
+                <DecisionSlip
+                  proposalId={proposal.id}
+                  currentDecision={proposal.decision}
+                  currentNote={proposal.wearer_note}
+                  disabled={isRevoked}
+                  onDecide={(dec, note) => handleDecide(proposal.id, dec, note)}
+                />
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Accessible Revocation Confirmation Modal */}
+      {/* Revocation Confirmation Modal */}
       {isRevokeModalOpen && (
         <div
-          role="alertdialog"
+          role="dialog"
           aria-modal="true"
           aria-labelledby="revoke-modal-title"
-          aria-describedby="revoke-modal-desc"
-          className="fixed inset-0 z-50 bg-ink/60 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40 backdrop-blur-sm"
         >
-          <div className="parcel-card max-w-md w-full bg-white border-2 border-rust p-6 space-y-4 shadow-xl">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2 text-rust">
-                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-                <h3 id="revoke-modal-title" className="font-serif font-bold text-lg text-ink">
-                  Revoke Try-On Pass?
-                </h3>
+          <div className="bg-white rounded-lg max-w-md w-full p-6 space-y-4 shadow-xl border border-stone">
+            <div className="flex items-center gap-3 text-rust">
+              <div className="w-10 h-10 rounded-full bg-rust-light flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5" />
               </div>
-              <button
-                type="button"
-                onClick={() => setIsRevokeModalOpen(false)}
-                className="text-ink-muted hover:text-ink p-1 rounded"
-                aria-label="Close dialog"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <h3 id="revoke-modal-title" className="font-serif text-lg font-bold text-ink">
+                Revoke Try-On Pass?
+              </h3>
             </div>
-            <p id="revoke-modal-desc" className="text-xs text-ink-muted leading-relaxed">
-              Revoking will immediately cancel all pending provider tasks, purge your uploaded source
-              reference photo, and permanently disable the helper link. This action cannot be undone.
+
+            <p className="text-xs text-ink-muted leading-relaxed">
+              This action is immediate and irrevocable. Helper access will be permanently revoked,
+              all in-memory reference images will be purged, and deletion requests will be sent to
+              YouCam for all remote files and tasks.
             </p>
-            <div className="flex items-center justify-end gap-3 pt-2">
+
+            <div className="p-3 bg-stone-light/40 rounded text-[11px] text-ink-muted space-y-1">
+              <p className="font-semibold text-ink">Cryptographic Guarantee:</p>
+              <p>• Helper link becomes invalid immediately (HTTP 410).</p>
+              <p>• You will receive an HMAC-SHA256 signed audit receipt proving data purge.</p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setIsRevokeModalOpen(false)}
-                className="px-4 py-2 border border-stone rounded text-xs font-semibold text-ink hover:bg-stone-light/40 transition-colors"
+                className="px-4 py-2 rounded text-xs font-semibold text-ink-muted hover:text-ink hover:bg-stone-light/60 transition-colors"
               >
                 Cancel
               </button>
@@ -536,7 +473,7 @@ export const WearerRoomPage: React.FC = () => {
                 disabled={revokeMutation.isPending}
                 className="px-4 py-2 bg-rust hover:bg-rust-dark text-white rounded text-xs font-semibold transition-colors disabled:opacity-50"
               >
-                {revokeMutation.isPending ? 'Purging Session...' : 'Yes, Revoke and Purge'}
+                {revokeMutation.isPending ? 'Purging Data...' : 'Confirm Revoke & Purge'}
               </button>
             </div>
           </div>

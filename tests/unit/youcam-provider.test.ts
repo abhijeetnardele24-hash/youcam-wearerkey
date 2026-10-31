@@ -47,7 +47,6 @@ describe("YouCamClothesProvider Contract Tests", () => {
     it("successfully completes official /s2s/v2.0/file protocol and presigned PUT", async () => {
       const client = mockAgent.get(baseUrl);
 
-      // 1. Mock file init response with official nested structure
       client
         .intercept({
           path: "/s2s/v2.0/file",
@@ -77,7 +76,6 @@ describe("YouCamClothesProvider Contract Tests", () => {
           }
         });
 
-      // 2. Mock presigned storage upload endpoint
       const uploadClient = mockAgent.get("https://mock.upload.cdn");
       uploadClient
         .intercept({
@@ -91,7 +89,7 @@ describe("YouCamClothesProvider Contract Tests", () => {
       expect(result.contentHash).toBe(sampleImage.contentHash);
     });
 
-    it("throws clear error when /s2s/v2.0/file rejects request", async () => {
+    it("throws clear error when /s2s/v2.0/file rejects request (401 Unauthorized)", async () => {
       const client = mockAgent.get(baseUrl);
       client
         .intercept({
@@ -105,7 +103,7 @@ describe("YouCamClothesProvider Contract Tests", () => {
       );
     });
 
-    it("throws clear error when presigned PUT upload fails", async () => {
+    it("throws clear error when presigned PUT upload fails (500 Server Error)", async () => {
       const client = mockAgent.get(baseUrl);
       client
         .intercept({
@@ -143,7 +141,7 @@ describe("YouCamClothesProvider Contract Tests", () => {
   });
 
   describe("createTask", () => {
-    it("successfully submits Clothes V4 task", async () => {
+    it("successfully submits Clothes V4 task with strict multiperson filter", async () => {
       const client = mockAgent.get(baseUrl);
       client
         .intercept({
@@ -152,6 +150,15 @@ describe("YouCamClothesProvider Contract Tests", () => {
           headers: {
             authorization: `Bearer ${apiKey}`,
             "content-type": "application/json"
+          },
+          body: (body: string) => {
+            const parsed = JSON.parse(body);
+            return (
+              parsed.src_file_id === "src_file_1" &&
+              parsed.ref_file_id === "ref_file_1" &&
+              parsed.garment_category === "outer" &&
+              parsed.filter_multi_person === "strict"
+            );
           }
         })
         .reply(200, {
@@ -172,7 +179,7 @@ describe("YouCamClothesProvider Contract Tests", () => {
       expect(task.estimatedUnits).toBe(2);
     });
 
-    it("throws when task creation fails", async () => {
+    it("throws when task creation fails (400 Bad Request)", async () => {
       const client = mockAgent.get(baseUrl);
       client
         .intercept({
@@ -192,11 +199,33 @@ describe("YouCamClothesProvider Contract Tests", () => {
   });
 
   describe("pollTask", () => {
-    it("returns SUCCEEDED when task completes with result URL", async () => {
+    it("supports official documented successful response containing data.results.url", async () => {
       const client = mockAgent.get(baseUrl);
       client
         .intercept({
-          path: "/s2s/v2.0/task/cloth-v4/task_success_123",
+          path: "/s2s/v2.0/task/cloth-v4/task_success_official",
+          method: "GET"
+        })
+        .reply(200, {
+          data: {
+            task_status: "SUCCESS",
+            results: {
+              url: "https://mock.youcam.cdn/results/official_url_structure.png"
+            }
+          }
+        });
+
+      const status = await provider.pollTask("task_success_official", 5000);
+      expect(status.status).toBe("SUCCEEDED");
+      expect(status.resultUrl).toBe("https://mock.youcam.cdn/results/official_url_structure.png");
+      expect(status.observedUnits).toBe(2);
+    });
+
+    it("supports array results fallback (data.results[0].url)", async () => {
+      const client = mockAgent.get(baseUrl);
+      client
+        .intercept({
+          path: "/s2s/v2.0/task/cloth-v4/task_success_array",
           method: "GET"
         })
         .reply(200, {
@@ -204,19 +233,18 @@ describe("YouCamClothesProvider Contract Tests", () => {
             task_status: "SUCCESS",
             results: [
               {
-                url: "https://mock.youcam.cdn/results/final_vto.png"
+                url: "https://mock.youcam.cdn/results/array_url_structure.png"
               }
             ]
           }
         });
 
-      const status = await provider.pollTask("task_success_123", 5000);
+      const status = await provider.pollTask("task_success_array", 5000);
       expect(status.status).toBe("SUCCEEDED");
-      expect(status.resultUrl).toBe("https://mock.youcam.cdn/results/final_vto.png");
-      expect(status.observedUnits).toBe(2);
+      expect(status.resultUrl).toBe("https://mock.youcam.cdn/results/array_url_structure.png");
     });
 
-    it("returns FAILED when provider reports failure", async () => {
+    it("returns FAILED when provider reports failure with specific error code", async () => {
       const client = mockAgent.get(baseUrl);
       client
         .intercept({
@@ -236,10 +264,64 @@ describe("YouCamClothesProvider Contract Tests", () => {
       expect(status.errorCode).toBe("NO_PERSON_DETECTED");
       expect(status.errorMessage).toContain("human body");
     });
+
+    it("returns FAILED with EMPTY_RESULT_URL when success status has no result URL", async () => {
+      const client = mockAgent.get(baseUrl);
+      client
+        .intercept({
+          path: "/s2s/v2.0/task/cloth-v4/task_no_url",
+          method: "GET"
+        })
+        .reply(200, {
+          data: {
+            task_status: "SUCCESS",
+            results: {}
+          }
+        });
+
+      const status = await provider.pollTask("task_no_url", 5000);
+      expect(status.status).toBe("FAILED");
+      expect(status.errorCode).toBe("EMPTY_RESULT_URL");
+    });
+
+    it("handles malformed non-JSON response gracefully", async () => {
+      const client = mockAgent.get(baseUrl);
+      client
+        .intercept({
+          path: "/s2s/v2.0/task/cloth-v4/task_bad_json",
+          method: "GET"
+        })
+        .reply(200, "<html><body>502 Bad Gateway</body></html>", {
+          headers: { "content-type": "text/html" }
+        });
+
+      const status = await provider.pollTask("task_bad_json", 5000);
+      expect(status.status).toBe("FAILED");
+      expect(status.errorCode).toBe("MALFORMED_RESPONSE");
+    });
+
+    it("handles polling timeout", async () => {
+      const client = mockAgent.get(baseUrl);
+      client
+        .intercept({
+          path: "/s2s/v2.0/task/cloth-v4/task_slow",
+          method: "GET"
+        })
+        .reply(200, {
+          data: {
+            task_status: "PROCESSING"
+          }
+        })
+        .persist();
+
+      const status = await provider.pollTask("task_slow", 500); // 500ms timeout
+      expect(status.status).toBe("FAILED");
+      expect(status.errorCode).toBe("Timeout");
+    });
   });
 
   describe("deleteTask and deleteFile", () => {
-    it("deletes task via POST /s2s/v2.0/task/delete", async () => {
+    it("deletes task via POST /s2s/v2.0/task/delete with GENUINE_PROVIDER_CONFIRMED mode", async () => {
       const client = mockAgent.get(baseUrl);
       client
         .intercept({
@@ -255,6 +337,28 @@ describe("YouCamClothesProvider Contract Tests", () => {
       const res = await provider.deleteTask("task_to_delete_999");
       expect(res.confirmed).toBe(true);
       expect(res.providerStatus).toBe("DELETED");
+      expect(res.deletionMode).toBe("GENUINE_PROVIDER_CONFIRMED");
+    });
+
+    it("handles unconfirmed task deletion when provider returns error", async () => {
+      const client = mockAgent.get(baseUrl);
+      client
+        .intercept({
+          path: "/s2s/v2.0/task/delete",
+          method: "POST"
+        })
+        .reply(500, "Internal Server Error");
+
+      client
+        .intercept({
+          path: "/s2s/v2.0/task/cloth-v4?task_id=task_fail_delete",
+          method: "DELETE"
+        })
+        .reply(500, "Internal Server Error");
+
+      const res = await provider.deleteTask("task_fail_delete");
+      expect(res.confirmed).toBe(false);
+      expect(res.providerStatus).toBe("FAILED");
     });
 
     it("deletes file via DELETE /s2s/v2.0/file/{fileId}", async () => {
@@ -271,6 +375,19 @@ describe("YouCamClothesProvider Contract Tests", () => {
 
       const success = await provider.deleteFile("file_to_delete_888");
       expect(success).toBe(true);
+    });
+
+    it("returns false when delete file fails", async () => {
+      const client = mockAgent.get(baseUrl);
+      client
+        .intercept({
+          path: "/s2s/v2.0/file/file_fail",
+          method: "DELETE"
+        })
+        .reply(404, "Not Found");
+
+      const success = await provider.deleteFile("file_fail");
+      expect(success).toBe(false);
     });
   });
 });

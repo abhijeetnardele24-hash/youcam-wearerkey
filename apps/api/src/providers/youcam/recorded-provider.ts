@@ -49,8 +49,9 @@ export class RecordedReceiptProvider implements ClothesTryOnProvider {
   async deleteTask(taskId: string): Promise<ProviderDeletionResult> {
     return {
       taskId,
-      confirmed: true,
-      providerStatus: "DELETED"
+      confirmed: false,
+      providerStatus: "DELETED",
+      deletionMode: "SIMULATED"
     };
   }
 

@@ -1,8 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
-import { eq, or } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import {
-  hashCapabilityToken,
-  verifyTokenHash,
+  hashBootstrapCode,
   generateSessionToken,
   hashSessionToken
 } from "@wearerkey/domain";
@@ -12,7 +11,7 @@ import { getDb } from "../db/index.js";
 import { relaySessions, auditEvents } from "../db/schema.js";
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
-  // Single-use or initial bootstrap route: exchanges URL fragment/token for HttpOnly session cookie
+  // Single-use bootstrap route: atomically exchanges URL fragment bootstrap code for HttpOnly session cookie
   fastify.post("/api/auth/bootstrap", async (req, reply) => {
     const parseResult = BootstrapRequestSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -22,124 +21,116 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    const inputCode = parseResult.data.bootstrap_code || parseResult.data.token;
-    const requestedRole = parseResult.data.role;
-
-    if (!inputCode || inputCode.trim().length < 16) {
-      return reply.status(400).send({
-        error: "INVALID_REQUEST",
-        message: "A valid bootstrap code or capability token of at least 16 characters is required."
-      });
-    }
-
-    const candidateHash = hashCapabilityToken(inputCode);
+    const { bootstrap_code: inputCode, role: requestedRole } = parseResult.data;
+    const candidateHash = hashBootstrapCode(inputCode);
     const db = await getDb();
+    const now = new Date();
 
-    // Query session matching bootstrap code hash or capability token hash
-    const rows = await db
-      .select()
-      .from(relaySessions)
-      .where(
-        or(
-          eq(relaySessions.wearerBootstrapCodeHash, candidateHash),
-          eq(relaySessions.helperBootstrapCodeHash, candidateHash),
-          eq(relaySessions.wearerTokenHash, candidateHash),
-          eq(relaySessions.helperTokenHash, candidateHash)
-        )
-      )
-      .limit(1);
-
-    const session = rows[0];
-    if (!session) {
-      return reply.status(403).send({
-        error: "FORBIDDEN",
-        message: "Invalid capability token or bootstrap code."
-      });
-    }
+    const sessionToken = generateSessionToken();
+    const sessionTokenHash = hashSessionToken(sessionToken);
 
     let resolvedRole: "wearer" | "helper" | null = null;
-    let isSingleUseRedemption = false;
+    let redeemedSession: typeof relaySessions.$inferSelect | null = null;
 
-    // 1. Check wearer bootstrap code (Single-Use enforcement)
-    if (session.wearerBootstrapCodeHash && verifyTokenHash(candidateHash, session.wearerBootstrapCodeHash)) {
+    // 1. Attempt atomic conditional redemption for Wearer bootstrap code
+    const wearerUpdate = await db
+      .update(relaySessions)
+      .set({
+        wearerBootstrapRedeemedAt: now,
+        wearerSessionTokenHash: sessionTokenHash,
+        updatedAt: now
+      })
+      .where(
+        and(
+          eq(relaySessions.wearerBootstrapCodeHash, candidateHash),
+          isNull(relaySessions.wearerBootstrapRedeemedAt)
+        )
+      )
+      .returning();
+
+    if (wearerUpdate.length > 0) {
       resolvedRole = "wearer";
-      isSingleUseRedemption = true;
-      if (session.wearerBootstrapRedeemedAt !== null) {
+      redeemedSession = wearerUpdate[0];
+    } else {
+      // 2. Attempt atomic conditional redemption for Helper bootstrap code
+      const helperUpdate = await db
+        .update(relaySessions)
+        .set({
+          helperBootstrapRedeemedAt: now,
+          helperSessionTokenHash: sessionTokenHash,
+          updatedAt: now
+        })
+        .where(
+          and(
+            eq(relaySessions.helperBootstrapCodeHash, candidateHash),
+            isNull(relaySessions.helperBootstrapRedeemedAt)
+          )
+        )
+        .returning();
+
+      if (helperUpdate.length > 0) {
+        resolvedRole = "helper";
+        redeemedSession = helperUpdate[0];
+      }
+    }
+
+    // 3. If no row was conditionally updated, diagnose replay vs invalid code
+    if (!redeemedSession || !resolvedRole) {
+      // Check if code was already redeemed (replay attack prevention)
+      const existingWearer = await db
+        .select()
+        .from(relaySessions)
+        .where(eq(relaySessions.wearerBootstrapCodeHash, candidateHash))
+        .limit(1);
+
+      if (existingWearer.length > 0 && existingWearer[0].wearerBootstrapRedeemedAt !== null) {
         return reply.status(409).send({
           error: "BOOTSTRAP_CODE_ALREADY_USED",
           message: "This capability link has already been redeemed. Single-use bootstrap links cannot be replayed."
         });
       }
-    }
-    // 2. Check helper bootstrap code (Single-Use enforcement)
-    else if (session.helperBootstrapCodeHash && verifyTokenHash(candidateHash, session.helperBootstrapCodeHash)) {
-      resolvedRole = "helper";
-      isSingleUseRedemption = true;
-      if (session.helperBootstrapRedeemedAt !== null) {
+
+      const existingHelper = await db
+        .select()
+        .from(relaySessions)
+        .where(eq(relaySessions.helperBootstrapCodeHash, candidateHash))
+        .limit(1);
+
+      if (existingHelper.length > 0 && existingHelper[0].helperBootstrapRedeemedAt !== null) {
         return reply.status(409).send({
           error: "BOOTSTRAP_CODE_ALREADY_USED",
           message: "This capability link has already been redeemed. Single-use bootstrap links cannot be replayed."
         });
       }
-    }
-    // 3. Check legacy/direct capability token hashes
-    else if (verifyTokenHash(candidateHash, session.wearerTokenHash)) {
-      resolvedRole = "wearer";
-    } else if (verifyTokenHash(candidateHash, session.helperTokenHash)) {
-      resolvedRole = "helper";
-    }
 
-    if (!resolvedRole) {
       return reply.status(403).send({
         error: "FORBIDDEN",
-        message: "Capability token validation failed."
+        message: "Invalid bootstrap code."
       });
     }
 
+    // Role mismatch check if caller explicitly requested a specific role
     if (requestedRole && requestedRole !== resolvedRole) {
       return reply.status(403).send({
         error: "ROLE_MISMATCH",
-        message: `Token is authorized for ${resolvedRole}, not ${requestedRole}.`
+        message: `Bootstrap code is authorized for ${resolvedRole}, not ${requestedRole}.`
       });
     }
 
-    if (session.status === "REVOKED") {
+    // Check revocation
+    if (redeemedSession.status === "REVOKED") {
       return reply.status(410).send({
         error: "SESSION_REVOKED",
         message: "This Try-On Pass has been revoked by the wearer."
       });
     }
 
-    if (new Date() >= new Date(session.expiresAt) || session.status === "EXPIRED") {
+    // Check expiration
+    if (new Date() >= new Date(redeemedSession.expiresAt) || redeemedSession.status === "EXPIRED") {
       return reply.status(410).send({
         error: "SESSION_EXPIRED",
         message: "This Try-On Pass has expired."
       });
-    }
-
-    // Generate fresh opaque session token stored in cookie and hashed at rest
-    const sessionToken = generateSessionToken();
-    const sessionTokenHash = hashSessionToken(sessionToken);
-    const now = new Date();
-
-    if (resolvedRole === "wearer") {
-      await db
-        .update(relaySessions)
-        .set({
-          wearerSessionTokenHash: sessionTokenHash,
-          ...(isSingleUseRedemption ? { wearerBootstrapRedeemedAt: now } : {}),
-          updatedAt: now
-        })
-        .where(eq(relaySessions.id, session.id));
-    } else {
-      await db
-        .update(relaySessions)
-        .set({
-          helperSessionTokenHash: sessionTokenHash,
-          ...(isSingleUseRedemption ? { helperBootstrapRedeemedAt: now } : {}),
-          updatedAt: now
-        })
-        .where(eq(relaySessions.id, session.id));
     }
 
     // Set role-separated and standard secure HttpOnly session cookies
@@ -148,7 +139,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       httpOnly: true,
       secure: config.NODE_ENV === "production",
       sameSite: "lax" as const,
-      maxAge: Math.max(60, Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000))
+      maxAge: Math.max(60, Math.floor((new Date(redeemedSession.expiresAt).getTime() - Date.now()) / 1000))
     };
 
     if (resolvedRole === "wearer") {
@@ -159,19 +150,18 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     reply.setCookie("wearerkey_session", sessionToken, cookieOptions);
 
     await db.insert(auditEvents).values({
-      sessionId: session.id,
+      sessionId: redeemedSession.id,
       actorRole: resolvedRole,
       eventType: "SESSION_BOOTSTRAPPED",
-      details: { role: resolvedRole, single_use_redeemed: isSingleUseRedemption }
+      details: { role: resolvedRole, single_use_redeemed: true }
     });
 
     return reply.send({
       authenticated: true,
-      session_id: session.id,
+      session_id: redeemedSession.id,
       role: resolvedRole,
-      status: session.status,
-      expires_at: session.expiresAt.toISOString()
+      status: redeemedSession.status,
+      expires_at: redeemedSession.expiresAt.toISOString()
     });
   });
 };
-

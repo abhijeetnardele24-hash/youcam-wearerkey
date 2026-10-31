@@ -15,9 +15,9 @@ export const relaySessions = pgTable("relay_sessions", {
   wearerSessionTokenHash: varchar("wearer_session_token_hash", { length: 64 }),
   helperSessionTokenHash: varchar("helper_session_token_hash", { length: 64 }),
 
-  // Legacy capability token hash compatibility
-  wearerTokenHash: varchar("wearer_token_hash", { length: 64 }).notNull(),
-  helperTokenHash: varchar("helper_token_hash", { length: 64 }).notNull(),
+  // Optional legacy capability token hash fields (no longer used for ordinary authorization)
+  wearerTokenHash: varchar("wearer_token_hash", { length: 64 }),
+  helperTokenHash: varchar("helper_token_hash", { length: 64 }),
 
   // Narrow post-revocation purge recovery capability
   purgeRecoveryTokenHash: varchar("purge_recovery_token_hash", { length: 64 }),
@@ -37,6 +37,7 @@ export const relaySessions = pgTable("relay_sessions", {
   deletionError: text("deletion_error"),
   deletionErrors: json("deletion_errors").$type<StructuredDeletionError[]>(),
   signedReceiptJson: text("signed_receipt_json"),
+  versionedReceiptsJson: json("versioned_receipts_json").$type<any[]>(),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -1,29 +1,15 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 import { FileText, ShieldCheck, Check, Copy, ArrowLeft, Download } from 'lucide-react';
 
 export const ReceiptPage: React.FC = () => {
-  const { token } = useParams<{ token: string }>();
   const [copied, setCopied] = useState(false);
 
   const { data: receipt, isLoading, error } = useQuery({
-    queryKey: ['audit-receipt', token || 'current'],
-    queryFn: async () => {
-      if (token) {
-        try {
-          return await api.getWearerReceipt(token);
-        } catch (e: any) {
-          if (e.statusCode === 403 || e.statusCode === 401) {
-            return await api.getHelperReceipt(token);
-          }
-          throw e;
-        }
-      }
-      // Without token in URL: authenticate via cookie or session header
-      return await api.getReceipt();
-    },
+    queryKey: ['audit-receipt'],
+    queryFn: () => api.getReceipt(),
   });
 
   const handleCopy = () => {
@@ -40,7 +26,7 @@ export const ReceiptPage: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `wearerkey-receipt-${token?.slice(0, 8)}.json`;
+      a.download = `wearerkey-deletion-receipt-${receipt.session_id.slice(0, 8)}.json`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -61,7 +47,7 @@ export const ReceiptPage: React.FC = () => {
         <FileText className="w-12 h-12 text-rust mx-auto mb-3" />
         <h2 className="font-serif text-xl font-bold text-ink mb-2">Audit Receipt Not Found</h2>
         <p className="text-xs text-ink-muted mb-6">
-          Could not locate a valid session receipt for this capability token.
+          Could not locate a valid session receipt. The session must be revoked or purged first to generate an immutable deletion assertion.
         </p>
         <Link to="/" className="text-xs text-wearer font-semibold hover:underline">
           Return to Home
@@ -101,47 +87,71 @@ export const ReceiptPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="parcel-card p-6 bg-white border-2 border-stone space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-stone-light">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-wearer-light text-wearer flex items-center justify-center font-bold">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-            <div>
+      <div className="parcel-card p-6 bg-white space-y-6 border-2 border-stone">
+        <div className="flex items-start justify-between border-b border-stone pb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <ShieldCheck className="w-5 h-5 text-wearer" />
               <h1 className="font-serif text-xl font-bold text-ink">
-                Session Deletion & Privacy Receipt
+                Application-Signed Deletion Status Assertion
               </h1>
-              <span className="text-[11px] text-ink-subtle">
-                Commit SHA: {receipt.evaluated_commit_sha || 'Local Dev'}
-              </span>
             </div>
+            <p className="text-xs text-ink-muted">
+              Evidence Schema {receipt.schema_version} • Version {receipt.receipt_version} • SHA-256 HMAC
+            </p>
           </div>
-          <span className="seal-badge seal-neutral font-mono text-[10px]">
-            Status: {receipt.status}
+          <span
+            className={`text-xs font-mono font-semibold px-2.5 py-1 rounded ${
+              receipt.overall_deletion_status === 'CONFIRMED'
+                ? 'bg-wearer-light text-wearer'
+                : 'bg-rust-light text-rust'
+            }`}
+          >
+            {receipt.overall_deletion_status}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div className="p-3 rounded bg-parchment-100 border border-stone/50 space-y-1">
-            <span className="text-ink-subtle text-[11px] font-medium block">Session ID</span>
-            <span className="font-mono font-semibold text-ink">{receipt.session_id}</span>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+          <div className="p-3 bg-stone-light/30 rounded">
+            <span className="text-ink-subtle text-[11px] block">Tasks Deleted</span>
+            <span className="font-mono font-bold text-ink">
+              {receipt.provider_tasks_deleted} / {receipt.provider_tasks_total}
+            </span>
           </div>
-
-          <div className="p-3 rounded bg-parchment-100 border border-stone/50 space-y-1">
-            <span className="text-ink-subtle text-[11px] font-medium block">Provider Task Count</span>
-            <span className="font-mono font-semibold text-ink">
-              {receipt.provider_task_count ?? 0} tasks executed
+          <div className="p-3 bg-stone-light/30 rounded">
+            <span className="text-ink-subtle text-[11px] block">Remote Files</span>
+            <span className="font-mono font-bold text-ink">
+              {receipt.remote_files_deleted} / {receipt.remote_files_total}
+            </span>
+          </div>
+          <div className="p-3 bg-stone-light/30 rounded">
+            <span className="text-ink-subtle text-[11px] block">In-Memory Purge</span>
+            <span className="font-mono font-bold text-wearer">
+              {receipt.in_memory_buffers_purged ? 'CONFIRMED' : 'PENDING'}
+            </span>
+          </div>
+          <div className="p-3 bg-stone-light/30 rounded">
+            <span className="text-ink-subtle text-[11px] block">Local Access</span>
+            <span className="font-mono font-bold text-rust">
+              {receipt.local_access_revoked ? 'REVOKED' : 'ACTIVE'}
             </span>
           </div>
         </div>
 
-        <div>
-          <h3 className="text-xs font-bold text-ink uppercase tracking-wider mb-2">
-            Verifiable Machine Receipt (JSON)
-          </h3>
-          <pre className="p-4 rounded bg-ink text-parchment font-mono text-[11px] overflow-x-auto leading-relaxed max-h-96">
+        <div className="space-y-2">
+          <h3 className="font-serif text-sm font-bold text-ink">Raw Canonical Evidence (JSON)</h3>
+          <pre className="p-4 bg-stone-light/40 rounded border border-stone font-mono text-[11px] text-ink overflow-x-auto max-h-96">
             {JSON.stringify(receipt, null, 2)}
           </pre>
+        </div>
+
+        <div className="p-3 rounded bg-stone-light/20 border border-stone text-[11px] text-ink-muted leading-relaxed">
+          <p className="font-semibold text-ink mb-0.5">Cryptographic Authenticity Note</p>
+          <p>
+            This deletion assertion is signed by WearerKey using HMAC-SHA256 with key ID{' '}
+            <code className="text-ink font-mono">{receipt.receipt_hmac?.key_id || 'wearerkey-audit-key-v1'}</code>.
+            It asserts local data zeroization and confirmation responses received from YouCam S2S deletion endpoints.
+          </p>
         </div>
       </div>
     </div>

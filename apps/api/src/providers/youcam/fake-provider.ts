@@ -84,8 +84,9 @@ export class FakeYouCamProvider implements ClothesTryOnProvider {
     this.tasks.delete(taskId);
     return {
       taskId,
-      confirmed: true,
-      providerStatus: "DELETED"
+      confirmed: false,
+      providerStatus: "DELETED",
+      deletionMode: "SIMULATED"
     };
   }
 

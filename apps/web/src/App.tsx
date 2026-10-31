@@ -23,11 +23,8 @@ export const App: React.FC = () => {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/create" element={<CreatePassPage />} />
-          <Route path="/wearer/:token" element={<WearerRoomPage />} />
           <Route path="/wearer" element={<WearerRoomPage />} />
-          <Route path="/helper/:token" element={<HelperRoomPage />} />
           <Route path="/helper" element={<HelperRoomPage />} />
-          <Route path="/receipt/:token" element={<ReceiptPage />} />
           <Route path="/receipt" element={<ReceiptPage />} />
           <Route path="/judge" element={<JudgeTourPage />} />
           <Route path="/about" element={<AboutPage />} />

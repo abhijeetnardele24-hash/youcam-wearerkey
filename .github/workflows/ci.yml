@@ -42,19 +42,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Typecheck Monorepo
+        run: pnpm typecheck
+
       - name: Run Vitest Unit & Integration Tests
         run: pnpm test
 
-      - name: Build Web Frontend
-        run: pnpm --filter @wearerkey/web build
+      - name: Build Monorepo (Contracts, Domain, API, Web)
+        run: pnpm build
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E & Axe Accessibility Checks
+        run: npx playwright test
 
       - name: Run Security & Secret Scan
         run: npx tsx scripts/security-scan.ts
 
       - name: Validate Truthfulness & Claims
         run: npx tsx scripts/check-claims.ts
-
-      - name: Probe YouCam Live Endpoint
-        env:
-          YOUCAM_API_KEY: ${{ secrets.YOUCAM_API_KEY }}
-        run: npx tsx scripts/live-youcam-smoke.ts

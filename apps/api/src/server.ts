@@ -41,26 +41,40 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
-  // In-memory sliding-window rate limiter per client IP
+  // Endpoint-specific sliding-window rate limiter per client IP + route scope
   const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
   const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
+  function getRouteLimit(pathname: string): number {
+    if (pathname.startsWith("/api/auth/bootstrap")) return 30;
+    if (pathname === "/api/sessions") return 20;
+    if (pathname.includes("/generate")) return 15;
+    if (pathname.startsWith("/api/receipts/verify")) return 60;
+    if (pathname.includes("/retry-purge")) return 20;
+    return config.RATE_LIMIT_MAX;
+  }
+
   app.addHook("onRequest", async (req, reply) => {
-    // Skip rate limiting during internal test runs
-    if (config.NODE_ENV === "test") return;
+    // In test mode, only enforce rate-limiting when explicitly requested by test suite
+    const isTestRateLimitEnforced = req.headers["x-test-rate-limit"] === "true";
+    if (config.NODE_ENV === "test" && !isTestRateLimitEnforced) return;
 
     const ip = req.ip || req.socket.remoteAddress || "127.0.0.1";
+    const pathname = req.url.split("?")[0];
+    const key = `${ip}:${pathname}`;
     const now = Date.now();
-    const entry = rateLimitMap.get(ip);
+    const entry = rateLimitMap.get(key);
+
+    const limit = isTestRateLimitEnforced ? 2 : getRouteLimit(pathname);
 
     if (!entry || now > entry.resetAt) {
-      rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+      rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
     } else {
       entry.count += 1;
-      if (entry.count > config.RATE_LIMIT_MAX) {
+      if (entry.count > limit) {
         return reply.status(429).send({
           error: "TOO_MANY_REQUESTS",
-          message: "Rate limit exceeded. Please wait a minute before retrying."
+          message: `Rate limit of ${limit} requests per minute exceeded for this endpoint. Please wait before retrying.`
         });
       }
     }
@@ -68,10 +82,12 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // Security Headers & Cache-Control No-Store
   app.addHook("onSend", async (req, reply) => {
-    reply.header(
-      "Content-Security-Policy",
-      "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; script-src 'self' 'unsafe-inline';"
-    );
+    const isProd = config.NODE_ENV === "production";
+    const csp = isProd
+      ? "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: blob: https:; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; script-src 'self';"
+      : "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; script-src 'self' 'unsafe-inline';";
+
+    reply.header("Content-Security-Policy", csp);
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("X-Frame-Options", "SAMEORIGIN");
     reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -89,18 +105,62 @@ export async function buildApp(): Promise<FastifyInstance> {
   const allowedOrigins = config.CORS_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
   app.addHook("onRequest", async (req, reply) => {
     if (["POST", "PUT", "DELETE", "PATCH"].includes(req.method)) {
+      const isProd = config.NODE_ENV === "production";
       const origin = req.headers.origin;
-      if (origin) {
-        const isAllowed =
-          allowedOrigins.includes(origin) ||
-          origin.startsWith("http://localhost:") ||
-          origin.startsWith("http://127.0.0.1:") ||
-          (config.APP_BASE_URL && origin === config.APP_BASE_URL);
+      const referer = req.headers.referer;
 
-        if (!isAllowed) {
+      // In production, reject localhost / 127.0.0.1 origins
+      const checkOriginString = (candidate: string) => {
+        if (isProd) {
+          return (
+            candidate.startsWith("https://") &&
+            (allowedOrigins.includes(candidate) || (config.APP_BASE_URL && candidate === config.APP_BASE_URL))
+          );
+        }
+        return (
+          allowedOrigins.includes(candidate) ||
+          candidate.startsWith("http://localhost:") ||
+          candidate.startsWith("http://127.0.0.1:") ||
+          (config.APP_BASE_URL && candidate === config.APP_BASE_URL)
+        );
+      };
+
+      if (origin) {
+        if (!checkOriginString(origin)) {
           return reply.status(403).send({
             error: "CSRF_ORIGIN_DENIED",
             message: "Request origin not authorized by WearerKey security policy."
+          });
+        }
+      } else if (referer) {
+        try {
+          const refOrigin = new URL(referer).origin;
+          if (!checkOriginString(refOrigin)) {
+            return reply.status(403).send({
+              error: "CSRF_ORIGIN_DENIED",
+              message: "Request referer not authorized by WearerKey security policy."
+            });
+          }
+        } catch {
+          return reply.status(403).send({
+            error: "CSRF_ORIGIN_DENIED",
+            message: "Malformed referer header."
+          });
+        }
+      } else {
+        // Missing Origin & Referer: allow only public creation routes or reject cookie-authenticated mutations
+        const hasSessionCookie =
+          req.cookies?.wearerkey_session_wearer ||
+          req.cookies?.wearerkey_session_helper ||
+          req.cookies?.wearerkey_session ||
+          req.cookies?.wearerkey_purge_recovery;
+
+        const isPublicS2S = req.url.startsWith("/api/sessions") || req.url.startsWith("/api/receipts/verify") || req.url.startsWith("/api/judge/seed");
+
+        if (hasSessionCookie && !isPublicS2S && isProd) {
+          return reply.status(403).send({
+            error: "CSRF_ORIGIN_REQUIRED",
+            message: "State-changing mutations with session credentials require valid Origin header."
           });
         }
       }
@@ -119,6 +179,16 @@ export async function buildApp(): Promise<FastifyInstance> {
     origin: (origin, cb) => {
       // Allow requests with no origin (like mobile apps, curl, server-to-server)
       if (!origin) return cb(null, true);
+      const isProd = config.NODE_ENV === "production";
+      if (isProd) {
+        if (
+          origin.startsWith("https://") &&
+          (allowedOrigins.includes(origin) || (config.APP_BASE_URL && origin === config.APP_BASE_URL))
+        ) {
+          return cb(null, true);
+        }
+        return cb(new Error("CORS origin not allowed in production"), false);
+      }
       if (
         allowedOrigins.includes(origin) ||
         origin.startsWith("http://localhost:") ||
@@ -168,7 +238,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       root: webDistDir,
       prefix: "/",
       wildcard: false,
-      decorateReply: false // Already decorated by public assets if present
+      decorateReply: false
     });
 
     // SPA fallback: return index.html for non-API GET requests
@@ -182,6 +252,22 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.status(404).send({ error: "NOT_FOUND", message: "Resource not found" });
     });
   }
+
+  // Centralized safe error handler: sanitize internal exceptions
+  app.setErrorHandler((error: any, req, reply) => {
+    req.log.error(error);
+    const statusCode = error.statusCode || 500;
+    if (statusCode >= 500) {
+      return reply.status(statusCode).send({
+        error: "INTERNAL_SERVER_ERROR",
+        message: "An internal server error occurred. Details have been logged securely."
+      });
+    }
+    return reply.status(statusCode).send({
+      error: error.code || "REQUEST_ERROR",
+      message: error.message
+    });
+  });
 
   return app;
 }

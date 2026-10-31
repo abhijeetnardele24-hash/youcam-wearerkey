@@ -4,16 +4,28 @@ import { Eye, ShieldAlert, Sparkles } from 'lucide-react';
 interface PrivateMirrorProps {
   sourceImageUrl?: string;
   resultImageUrl?: string;
-  garmentTitle: string;
+  resultUrl?: string | null;
+  garmentPreviewUrl?: string | null;
+  garmentTitle?: string;
+  label?: string;
+  status?: string;
+  failureMessage?: string | null;
   isProcessing?: boolean;
 }
 
 export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
   sourceImageUrl,
   resultImageUrl,
+  resultUrl,
+  garmentPreviewUrl: _garmentPreviewUrl,
   garmentTitle,
+  label,
+  status: _status,
+  failureMessage: _failureMessage,
   isProcessing = false,
 }) => {
+  const displayResultUrl = resultImageUrl || resultUrl || undefined;
+  const displayTitle = garmentTitle || label || 'Proposed Garment';
   const [viewMode, setViewMode] = useState<'result' | 'split' | 'source'>('result');
   const [zoom, setZoom] = useState(false);
 
@@ -31,7 +43,7 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
           </span>
         </div>
 
-        {resultImageUrl && (
+        {displayResultUrl && (
           <div className="flex items-center gap-1 bg-wearer-dark/60 rounded p-0.5 text-xs">
             <button
               type="button"
@@ -76,7 +88,7 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
               YouCam AI Clothes V4 is generating your virtual garment fit. This result will stream directly into your private mirror only.
             </p>
           </div>
-        ) : !resultImageUrl ? (
+        ) : !displayResultUrl ? (
           <div className="text-center p-8 text-ink-muted">
             <Sparkles className="w-8 h-8 mx-auto mb-2 text-stone-dark opacity-60" />
             <p className="text-xs">No try-on generated yet. Click "Generate Try-On" below to render.</p>
@@ -87,8 +99,8 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
             {viewMode === 'result' && (
               <div className="relative max-w-md mx-auto group">
                 <img
-                  src={resultImageUrl}
-                  alt={`Private virtual try-on result for ${garmentTitle}`}
+                  src={displayResultUrl}
+                  alt={`Private virtual try-on result for ${displayTitle}`}
                   className={`rounded shadow-md max-h-[500px] w-auto object-contain transition-transform duration-200 ${
                     zoom ? 'scale-125 cursor-zoom-out' : 'cursor-zoom-in'
                   }`}
@@ -121,8 +133,8 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
                     Virtual Try-On
                   </span>
                   <img
-                    src={resultImageUrl}
-                    alt={`Private try-on result for ${garmentTitle}`}
+                    src={displayResultUrl}
+                    alt={`Private try-on result for ${displayTitle}`}
                     className="rounded shadow max-h-[440px] w-auto mx-auto object-contain"
                   />
                 </div>

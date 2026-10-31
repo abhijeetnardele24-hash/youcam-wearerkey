@@ -37,6 +37,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
+  // Include credentials (HttpOnly session cookies) on all requests
   const response = await fetch(url, {
     ...options,
     credentials: 'include',
@@ -69,12 +70,15 @@ export const api = {
     return request<MetaResponse>('/meta');
   },
 
-  bootstrap(codeOrToken: string, role?: 'wearer' | 'helper'): Promise<BootstrapResponse> {
+  /**
+   * Redeems a single-use capability bootstrap code from URL fragment.
+   * Atomically exchanges for secure HttpOnly session cookie.
+   */
+  bootstrap(bootstrapCode: string, role?: 'wearer' | 'helper'): Promise<BootstrapResponse> {
     return request<BootstrapResponse>('/auth/bootstrap', {
       method: 'POST',
       body: JSON.stringify({
-        bootstrap_code: codeOrToken,
-        token: codeOrToken,
+        bootstrap_code: bootstrapCode,
         role,
       }),
     });
@@ -87,11 +91,10 @@ export const api = {
     });
   },
 
-  retryPurge(tokenOrRecoveryToken?: string): Promise<DeletionReceipt> {
+  retryPurge(recoveryToken?: string): Promise<DeletionReceipt> {
     const headers: Record<string, string> = {};
-    if (tokenOrRecoveryToken) {
-      headers['X-Purge-Recovery-Token'] = tokenOrRecoveryToken;
-      headers['Authorization'] = `Bearer ${tokenOrRecoveryToken}`;
+    if (recoveryToken) {
+      headers['X-Purge-Recovery-Token'] = recoveryToken;
     }
     return request<DeletionReceipt>('/wearer/session/retry-purge', {
       method: 'POST',
@@ -99,11 +102,10 @@ export const api = {
     });
   },
 
-  getReceipt(tokenOrRecoveryToken?: string): Promise<DeletionReceipt> {
+  getReceipt(recoveryToken?: string): Promise<DeletionReceipt> {
     const headers: Record<string, string> = {};
-    if (tokenOrRecoveryToken) {
-      headers['X-Purge-Recovery-Token'] = tokenOrRecoveryToken;
-      headers['Authorization'] = `Bearer ${tokenOrRecoveryToken}`;
+    if (recoveryToken) {
+      headers['X-Purge-Recovery-Token'] = recoveryToken;
     }
     return request<DeletionReceipt>('/receipts', {
       headers,
@@ -117,110 +119,73 @@ export const api = {
     });
   },
 
-  updateWearerSession(token?: string, formData?: FormData): Promise<{
+  updateWearerSession(formData: FormData): Promise<{
     status: string;
     source_uploaded: boolean;
     content_hash: string;
   }> {
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     return request('/wearer/session', {
       method: 'PUT',
-      headers,
       body: formData,
     });
   },
 
-  createHelperLink(token?: string): Promise<MintHelperLinkResponse> {
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+  createHelperLink(): Promise<MintHelperLinkResponse> {
     return request<MintHelperLinkResponse>('/wearer/helper-link', {
       method: 'POST',
-      headers,
     });
   },
 
-  getWearerSession(token?: string): Promise<WearerSessionDTO> {
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return request<WearerSessionDTO>('/wearer/session', {
-      headers,
-    });
+  getWearerSession(): Promise<WearerSessionDTO> {
+    return request<WearerSessionDTO>('/wearer/session');
   },
 
-  getWearerReceipt(token?: string): Promise<DeletionReceipt> {
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-      headers['X-Purge-Recovery-Token'] = token;
-    }
-    return request<DeletionReceipt>('/wearer/receipt', {
-      headers,
-    });
+  getWearerReceipt(): Promise<DeletionReceipt> {
+    return request<DeletionReceipt>('/wearer/receipt');
   },
 
   decideProposal(
-    token: string | undefined,
     proposalId: string,
     input: SubmitDecisionRequest
   ): Promise<{ success: boolean; decision: any }> {
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     return request(`/wearer/proposals/${proposalId}/decision`, {
       method: 'POST',
-      headers,
       body: JSON.stringify(input),
     });
   },
 
-  revokeSession(token?: string): Promise<{ success: boolean; message: string }> {
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return request('/wearer/session', {
+  revokeSession(): Promise<DeletionReceipt> {
+    return request<DeletionReceipt>('/wearer/session', {
       method: 'DELETE',
-      headers,
     });
   },
 
-  getHelperSession(token?: string): Promise<HelperSessionDTO> {
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return request<HelperSessionDTO>('/helper/session', {
-      headers,
-    });
+  getHelperSession(): Promise<HelperSessionDTO> {
+    return request<HelperSessionDTO>('/helper/session');
   },
 
-  getHelperReceipt(token?: string): Promise<any> {
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return request('/helper/receipt', {
-      headers,
-    });
+  getHelperReceipt(): Promise<any> {
+    return request('/helper/receipt');
   },
 
-  createHelperProposal(token: string | undefined, formData: FormData): Promise<{
+  createHelperProposal(formData: FormData): Promise<{
     success: boolean;
     proposal_id: string;
     status: string;
   }> {
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     return request('/helper/proposals', {
       method: 'POST',
-      headers,
       body: formData,
     });
   },
 
   generateTryOn(
-    token: string | undefined,
     proposalId: string,
     idempotencyKey?: string
   ): Promise<{ success: boolean; proposal: any }> {
     const headers: Record<string, string> = {
       'Idempotency-Key': idempotencyKey || `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     return request(`/helper/proposals/${proposalId}/generate`, {
       method: 'POST',
       headers,
@@ -229,13 +194,13 @@ export const api = {
 
   seedJudgeDemo(): Promise<{
     session_id: string;
-    wearer_token: string;
-    helper_token: string;
+    wearer_bootstrap_code: string;
+    helper_bootstrap_code: string;
     wearer_url: string;
     helper_url: string;
-    expires_at: string;
-    mode: string;
     status: string;
+    mode: string;
+    message: string;
   }> {
     return request('/judge/seed', {
       method: 'POST',

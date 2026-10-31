@@ -454,7 +454,7 @@ export const helperRoutes: FastifyPluginAsync = async (fastify) => {
         status: auth.session.status,
         wearer_photo_status: "PROTECTED_NOT_SHARED",
         local_access_revoked: auth.session.status === "REVOKED",
-        evidence_authority: "WEARERKEY_AUDITABLE_LEDGER"
+        evidence_authority: "WEARERKEY_APPLICATION_SIGNED_ASSERTION"
       });
     }
   );

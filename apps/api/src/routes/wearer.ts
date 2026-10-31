@@ -194,20 +194,21 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.redirect(rawResultUrl.startsWith("/") ? rawResultUrl : "/assets/sample_vto_result.png");
       }
 
-      // SSRF Protection: Restrict remote fetch to authorized YouCam CDN domains
+      // SSRF Protection: Restrict remote fetch strictly to authorized YouCam CDN domains
       try {
         const parsed = new URL(rawResultUrl);
         const host = parsed.hostname.toLowerCase();
+        const isProd = config.NODE_ENV === "production";
+
         const isAuthorizedHost =
           host === "yce-api-01.makeupar.com" ||
           host.endsWith(".makeupar.com") ||
           host.endsWith(".perfectcorp.com") ||
-          host === "localhost" ||
-          host === "127.0.0.1";
+          (!isProd && (host === "localhost" || host === "127.0.0.1"));
 
         if (!isAuthorizedHost) {
-          req.log.warn({ host }, "Blocked attempt to stream result from unauthorized host");
-          return reply.status(403).send({ error: "SSRF_BLOCKED", message: "Result origin domain not allowed" });
+          req.log.warn({ host }, "Blocked attempt to stream result from unauthorized or private host");
+          return reply.status(403).send({ error: "SSRF_BLOCKED", message: "Result origin domain not allowed by SSRF policy" });
         }
       } catch {
         return reply.status(400).send({ error: "INVALID_RESULT_URL" });
@@ -328,70 +329,22 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
       const auth = req.authSession!;
       const session = auth.session;
 
-      // If an immutable signed receipt was already generated and saved in DB, serve it directly
-      if (session.signedReceiptJson) {
-        try {
-          return reply.send(JSON.parse(session.signedReceiptJson));
-        } catch {
-          // fall through
-        }
+      if (!session.signedReceiptJson) {
+        return reply.status(404).send({
+          error: "RECEIPT_NOT_FOUND",
+          message: "No deletion receipt has been generated for this session yet. Session must be revoked or purged first."
+        });
       }
 
-      const db = await getDb();
-
-      const taskRows = await db
-        .select()
-        .from(providerTasks)
-        .innerJoin(proposals, eq(providerTasks.proposalId, proposals.id))
-        .where(eq(proposals.sessionId, auth.sessionId));
-
-      const totalTasks = taskRows.length;
-      const deletedTasks = taskRows.filter((t) => t.provider_tasks.taskDeletionStatus === "CONFIRMED").length;
-      const failedTasks = taskRows.filter((t) => t.provider_tasks.taskDeletionStatus === "FAILED").length;
-
-      const propRows = await db
-        .select()
-        .from(proposals)
-        .where(eq(proposals.sessionId, auth.sessionId));
-
-      const garmentFiles = propRows.filter((p) => !!p.garmentFileIdCiphertext);
-      const garmentDeleted = propRows.filter((p) => p.garmentDeletionStatus === "CONFIRMED").length;
-
-      const totalFiles = (auth.session.sourceFileIdCiphertext ? 1 : 0) + garmentFiles.length;
-      const deletedFiles = (auth.session.sourceDeletionStatus === "CONFIRMED" ? 1 : 0) + garmentDeleted;
-
-      const taskStatus: DeletionStatus =
-        totalTasks === 0 ? "NOT_REQUESTED" : failedTasks > 0 ? (deletedTasks > 0 ? "PARTIAL_FAILURE" : "FAILED") : "CONFIRMED";
-      const garmentStatus: DeletionStatus =
-        garmentFiles.length === 0 ? "NOT_REQUESTED" : garmentDeleted === garmentFiles.length ? "CONFIRMED" : "PARTIAL_FAILURE";
-
-      const receiptPayload: any = {
-        schema_version: "2.0",
-        session_id: auth.sessionId,
-        status: auth.session.status,
-        revoked_at: auth.session.revokedAt ? auth.session.revokedAt.toISOString() : null,
-        purged_at: auth.session.purgedAt ? auth.session.purgedAt.toISOString() : null,
-        overall_deletion_status: auth.session.deletionStatus,
-        task_deletion_status: taskStatus,
-        source_file_deletion_status: auth.session.sourceDeletionStatus,
-        garment_file_deletion_status: garmentStatus,
-        provider_tasks_total: totalTasks,
-        provider_tasks_deleted: deletedTasks,
-        remote_files_total: totalFiles,
-        remote_files_deleted: deletedFiles,
-        in_memory_buffers_purged: auth.session.status === "REVOKED",
-        local_access_revoked: auth.session.status === "REVOKED",
-        evaluated_commit_sha: process.env.GIT_COMMIT_SHA || "unknown",
-        evidence_authority: "WEARERKEY_AUDITABLE_LEDGER",
-        deletion_error: auth.session.deletionError || null,
-        ...(auth.session.deletionErrors ? { deletion_errors: auth.session.deletionErrors } : {})
-      };
-
-      const signingKey = config.RECEIPT_SIGNING_KEY || config.ENCRYPTION_KEY_HEX;
-      const signatureInfo = signReceiptPayload(receiptPayload, signingKey);
-      receiptPayload.receipt_hmac = signatureInfo;
-
-      return reply.send(receiptPayload);
+      try {
+        const parsed = JSON.parse(session.signedReceiptJson);
+        return reply.send(parsed);
+      } catch {
+        return reply.status(500).send({
+          error: "RECEIPT_INTEGRITY_ERROR",
+          message: "Persisted receipt record is malformed."
+        });
+      }
     }
   );
 };

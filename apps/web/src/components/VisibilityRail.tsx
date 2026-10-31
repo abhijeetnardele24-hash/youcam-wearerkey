@@ -4,9 +4,15 @@ import { Eye, EyeOff, Cpu, Lock } from 'lucide-react';
 interface VisibilityRailProps {
   currentStage?: 'consent' | 'upload' | 'proposal' | 'generating' | 'review' | 'decision';
   compact?: boolean;
+  role?: 'wearer' | 'helper';
+  giftMode?: boolean;
 }
 
-export const VisibilityRail: React.FC<VisibilityRailProps> = ({ compact = false }) => {
+export const VisibilityRail: React.FC<VisibilityRailProps> = ({
+  compact = false,
+  role: _role,
+  giftMode: _giftMode = false,
+}) => {
   return (
     <div className={`parcel-border rounded-lg bg-white overflow-hidden ${compact ? 'p-3' : 'p-4'}`}>
       <div className="flex items-center justify-between pb-3 border-b border-stone-light">

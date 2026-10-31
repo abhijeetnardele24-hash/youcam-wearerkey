@@ -14,8 +14,8 @@ Every claim in the WearerKey submission is backed by reproducible automated suit
 | Verification Dimension | Evaluated Target | Measured Result | Status |
 | :--- | :--- | :--- | :--- |
 | **Unit Testing (Domain & Crypto)** | `@wearerkey/domain` | 20 / 20 tests passed | ✅ PASSED |
-| **Provider Contract Testing** | `YouCamClothesProvider` | 11 / 11 tests passed | ✅ PASSED |
-| **End-to-End API Integration** | `@wearerkey/api` | 11 / 11 tests passed | ✅ PASSED |
+| **Provider Contract Testing** | `YouCamClothesProvider` | 17 / 17 tests passed | ✅ PASSED |
+| **End-to-End API Integration** | `@wearerkey/api` | 13 / 13 tests passed | ✅ PASSED |
 | **Browser E2E User Journeys** | Playwright (Desktop + Mobile) | 8 / 8 tests passed | ✅ PASSED |
 | **Accessibility (WCAG 2.1 AA)** | Axe-Core (Home, Create, Judge) | 0 violations among tested views | ✅ PASSED |
 | **Security & Secrets Scan** | Git-tracked file scanner | 0 exposed secrets detected | ✅ PASSED |

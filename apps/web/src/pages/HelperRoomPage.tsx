@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { ConsentSeal } from '../components/ConsentSeal';
@@ -14,36 +14,15 @@ import {
   HelpCircle,
   XCircle,
   FileText,
-  ExternalLink,
-  ShieldCheck,
   Send,
   RefreshCw,
 } from 'lucide-react';
 
 export const HelperRoomPage: React.FC = () => {
-  const { token: routeToken } = useParams<{ token: string }>();
   const queryClient = useQueryClient();
-
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
-  // Single-use capability token: read from route or URL fragment without storing in sessionStorage
-  const [token] = useState<string>(() => {
-    if (routeToken) return routeToken;
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash;
-      if (hash.startsWith('#bootstrap=')) {
-        return hash.substring(11);
-      }
-      if (hash.startsWith('#token=')) {
-        return hash.substring(7);
-      }
-      if (hash.startsWith('#') && hash.length > 10) {
-        return hash.substring(1);
-      }
-    }
-    return '';
-  });
-
+  // Single-use capability bootstrap: read strictly from URL fragment without storing in sessionStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
@@ -69,11 +48,9 @@ export const HelperRoomPage: React.FC = () => {
               setBootstrapError(err?.message || 'Bootstrap authentication failed.');
             }
           });
-      } else if (token) {
-        api.bootstrap(token, 'helper').catch(() => {});
       }
     }
-  }, [token, queryClient]);
+  }, [queryClient]);
 
   // Form states
   const [label, setLabel] = useState('');
@@ -91,15 +68,15 @@ export const HelperRoomPage: React.FC = () => {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['helper-session', token],
-    queryFn: () => api.getHelperSession(token || undefined),
+    queryKey: ['helper-session'],
+    queryFn: () => api.getHelperSession(),
     refetchInterval: 3000,
   });
 
   const generateTryOnMutation = useMutation({
-    mutationFn: (proposalId: string) => api.generateTryOn(token || undefined, proposalId),
+    mutationFn: (proposalId: string) => api.generateTryOn(proposalId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['helper-session', token] });
+      queryClient.invalidateQueries({ queryKey: ['helper-session'] });
     },
     onError: (err: any) => {
       setFormError(err?.message || 'Failed to trigger try-on generation.');
@@ -174,7 +151,7 @@ export const HelperRoomPage: React.FC = () => {
 
   const handleCreateProposal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !session) return;
+    if (!session) return;
     if (!label.trim()) {
       setFormError('Please enter a garment title.');
       return;
@@ -196,7 +173,7 @@ export const HelperRoomPage: React.FC = () => {
       if (brand.trim()) formData.append('brand', brand.trim());
       formData.append('garmentImage', selectedFile);
 
-      await api.createHelperProposal(token || undefined, formData);
+      await api.createHelperProposal(formData);
 
       // Reset form
       setLabel('');
@@ -205,7 +182,7 @@ export const HelperRoomPage: React.FC = () => {
       setBrand('');
       setSelectedFile(null);
       setFilePreview(null);
-      queryClient.invalidateQueries({ queryKey: ['helper-session', token] });
+      queryClient.invalidateQueries({ queryKey: ['helper-session'] });
     } catch (err: any) {
       setFormError(err?.message || 'Failed to submit garment proposal.');
     } finally {
@@ -246,375 +223,357 @@ export const HelperRoomPage: React.FC = () => {
         <EyeOff className="w-12 h-12 text-rust mx-auto mb-3" />
         <h2 className="font-serif text-xl font-bold text-ink mb-2">Invalid or Expired Helper Pass</h2>
         <p className="text-xs text-ink-muted mb-6">
-          This helper link is either invalid, revoked by the wearer, or past its expiration window.
+          {(error as any)?.message || 'This helper room link has expired or the session was revoked.'}
         </p>
+        <Link
+          to="/"
+          className="inline-block px-4 py-2 bg-helper text-white text-xs font-semibold rounded hover:bg-helper-dark transition-colors"
+        >
+          Return to Home
+        </Link>
       </div>
     );
   }
 
-  const remainingBudget = session.proposals_remaining;
-  const canPropose = session.status === 'ACTIVE' && remainingBudget > 0;
-  const proposalsUsed = session.max_proposals - session.proposals_remaining;
+  const isRevoked = session.status === 'REVOKED';
+  const proposalsRemaining = session.proposals_remaining;
+  const canPropose = !isRevoked && proposalsRemaining > 0;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-      {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-stone">
         <div>
-          <div className="flex items-center gap-2 text-helper font-bold text-xs uppercase tracking-wider mb-1">
-            <EyeOff className="w-4 h-4" />
-            <span>Helper / Stylist Workspace</span>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-helper inline-block" />
+            <h1 className="font-serif text-2xl sm:text-3xl font-bold text-ink">
+              Helper Shopping Workspace
+            </h1>
           </div>
-          <h1 className="font-serif text-2xl sm:text-3xl font-bold text-ink">
-            Propose Outfits for the Wearer
-          </h1>
-          <p className="text-xs text-ink-muted mt-0.5">
-            Suggest garments within permitted categories. You will receive their feedback without
-            seeing their body photo.
+          <p className="text-xs text-ink-muted">
+            Propose styles for the wearer • Wearer body photo and private mirror renders are strictly protected
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <Link
-            to={`/receipt/${token}`}
-            className="px-3 py-1.5 rounded border border-stone bg-white hover:bg-stone-light/40 text-xs font-semibold text-ink flex items-center gap-1.5 transition-colors"
+            to="/receipt"
+            className="px-3.5 py-1.5 rounded bg-stone-light/60 hover:bg-stone text-xs font-semibold text-ink flex items-center gap-1.5 transition-colors"
           >
-            <FileText className="w-3.5 h-3.5 text-ink-subtle" />
-            <span>Redacted Receipt</span>
+            <FileText className="w-3.5 h-3.5" />
+            <span>Audit Ledger</span>
           </Link>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="p-2 rounded border border-stone bg-white hover:bg-stone-light/40 text-ink transition-colors"
-            title="Refresh session"
-            aria-label="Refresh session"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
 
-      {/* Strict Role-Separated Privacy Notice */}
-      <div className="parcel-card p-4 bg-helper-light/40 border-2 border-helper-border/40 flex items-start gap-3">
-        <ShieldCheck className="w-5 h-5 text-helper flex-shrink-0 mt-0.5" />
-        <div className="text-xs text-ink-muted">
-          <strong className="text-ink">Server-Enforced Privacy Boundary:</strong> As a helper, you have no
-          access to the wearer's reference photo or virtual try-on render. When you click "Request
-          Try-On", YouCam AI Clothes V4 renders the outfit directly to the wearer's private mirror.
-          You will receive only their verdict (Approve / Maybe / Pass) and safe feedback note.
-        </div>
-      </div>
-
-      {/* Visibility Rail */}
-      <VisibilityRail currentStage="proposal" />
-
-      {/* Consent Seal */}
-      <ConsentSeal
-        categories={session.allowed_categories}
-        maxProposals={session.max_proposals}
-        proposalsUsed={proposalsUsed}
-        expiresAt={session.expires_at}
-        status={session.status}
-        isWearer={false}
-      />
-
-      {formError && (
-        <div className="p-3 rounded bg-rust-light border border-rust text-rust text-xs font-medium">
-          {formError}
+      {/* Revoked Notice */}
+      {isRevoked && (
+        <div className="p-4 rounded-lg bg-rust-light/40 border border-rust text-ink space-y-2">
+          <div className="flex items-center gap-2 text-rust font-semibold text-sm">
+            <EyeOff className="w-4 h-4" />
+            <span>Try-On Pass Revoked by Wearer</span>
+          </div>
+          <p className="text-xs text-ink-muted leading-relaxed">
+            The wearer has ended this shopping collaboration. No further garment proposals can be
+            submitted, and all session data has been purged according to the WearerKey privacy protocol.
+          </p>
         </div>
       )}
 
-      {/* Proposal Creation Card */}
-      {canPropose && (
-        <div className="parcel-card p-6 bg-white border-2 border-stone">
-          <div className="flex items-center justify-between pb-3 border-b border-stone-light mb-4">
-            <div className="flex items-center gap-2">
+      {/* Visibility Rail Component */}
+      <VisibilityRail role="helper" giftMode={session.gift_mode} />
+
+      {/* Consent Seal & Propose Form Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Consent Seal Info */}
+        <div className="md:col-span-1">
+          <ConsentSeal
+            version="2026-10-30-v1"
+            allowedCategories={session.allowed_categories}
+            maxProposals={session.max_proposals}
+            proposalsRemaining={session.proposals_remaining}
+            expiresAt={session.expires_at}
+            giftMode={session.gift_mode}
+            status={session.status}
+          />
+        </div>
+
+        {/* Propose Garment Form */}
+        <div className="md:col-span-2 parcel-card p-6 bg-white space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-ink font-serif font-bold text-base">
               <Plus className="w-4 h-4 text-helper" />
-              <h3 className="font-serif font-bold text-base text-ink">
-                Propose a Garment ({remainingBudget} remaining)
-              </h3>
+              <span>Propose a Garment</span>
             </div>
-            <button
-              type="button"
-              onClick={handleUseSampleGarment}
-              className="text-xs text-helper hover:underline flex items-center gap-1 font-medium"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Use Sample Garment</span>
-            </button>
+            <span className="text-xs font-mono text-ink-muted">
+              {proposalsRemaining} proposal{proposalsRemaining === 1 ? '' : 's'} remaining
+            </span>
           </div>
 
-          <form onSubmit={handleCreateProposal} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="garment-title"
-                  className="block text-xs font-bold text-ink uppercase tracking-wider mb-1"
-                >
-                  Garment Name / Title *
-                </label>
-                <input
-                  id="garment-title"
-                  type="text"
-                  required
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder="e.g. Linen Camp Collar Shirt"
-                  className="w-full px-3 py-2 text-xs rounded border border-stone bg-white text-ink"
-                />
+          {canPropose ? (
+            <form onSubmit={handleCreateProposal} className="space-y-4">
+              {formError && (
+                <div className="p-3 rounded bg-rust-light border border-rust text-rust text-xs font-medium">
+                  {formError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="garment-label" className="block text-xs font-semibold text-ink mb-1">
+                    Garment Title *
+                  </label>
+                  <input
+                    id="garment-label"
+                    type="text"
+                    required
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder="e.g. Wool Peacoat, Linen Blouse"
+                    className="w-full px-3 py-2 border border-stone rounded text-xs text-ink focus:outline-none focus:border-helper"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="garment-category" className="block text-xs font-semibold text-ink mb-1">
+                    Category *
+                  </label>
+                  <select
+                    id="garment-category"
+                    value={category || session.allowed_categories[0]}
+                    onChange={(e) => setCategory(e.target.value as GarmentCategory)}
+                    className="w-full px-3 py-2 border border-stone rounded text-xs text-ink focus:outline-none focus:border-helper bg-white capitalize"
+                  >
+                    {session.allowed_categories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat.replace('_', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label
-                  htmlFor="garment-cat"
-                  className="block text-xs font-bold text-ink uppercase tracking-wider mb-1"
-                >
-                  Permitted Category *
-                </label>
-                <select
-                  id="garment-cat"
-                  value={category || session.allowed_categories[0]}
-                  onChange={(e) => setCategory(e.target.value as GarmentCategory)}
-                  className="w-full px-3 py-2 text-xs rounded border border-stone bg-white text-ink capitalize"
-                >
-                  {session.allowed_categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c.replace('_', ' ')}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="product-brand" className="block text-xs font-semibold text-ink mb-1">
+                    Brand / Retailer (Optional)
+                  </label>
+                  <input
+                    id="product-brand"
+                    type="text"
+                    value={brand}
+                    onChange={(e) => setBrand(e.target.value)}
+                    placeholder="e.g. Everlane, COS, Zara"
+                    className="w-full px-3 py-2 border border-stone rounded text-xs text-ink focus:outline-none focus:border-helper"
+                  />
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="retailer-url"
-                  className="block text-xs font-bold text-ink uppercase tracking-wider mb-1"
-                >
-                  Store / Retailer Link <span className="font-normal text-ink-subtle">(optional)</span>
-                </label>
-                <input
-                  id="retailer-url"
-                  type="url"
-                  value={productUrl}
-                  onChange={(e) => setProductUrl(e.target.value)}
-                  placeholder="https://example.com/product/123"
-                  className="w-full px-3 py-2 text-xs rounded border border-stone bg-white text-ink"
-                />
+                <div>
+                  <label htmlFor="product-url" className="block text-xs font-semibold text-ink mb-1">
+                    Product Page Link (Optional)
+                  </label>
+                  <input
+                    id="product-url"
+                    type="url"
+                    value={productUrl}
+                    onChange={(e) => setProductUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 border border-stone rounded text-xs text-ink focus:outline-none focus:border-helper"
+                  />
+                </div>
               </div>
 
+              {/* Garment Image Upload */}
               <div>
-                <label
-                  htmlFor="brand"
-                  className="block text-xs font-bold text-ink uppercase tracking-wider mb-1"
-                >
-                  Brand Name <span className="font-normal text-ink-subtle">(optional)</span>
+                <label className="block text-xs font-semibold text-ink mb-1">
+                  Garment Product Photo *
                 </label>
-                <input
-                  id="brand"
-                  type="text"
-                  value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
-                  placeholder="e.g. Everlane, Arket"
-                  maxLength={100}
-                  className="w-full px-3 py-2 text-xs rounded border border-stone bg-white text-ink"
-                />
-              </div>
-            </div>
-
-            {/* Garment Image Upload */}
-            <div>
-              <label className="block text-xs font-bold text-ink uppercase tracking-wider mb-1.5">
-                Garment Product Photo *
-              </label>
-              <div className="parcel-border rounded p-4 bg-parchment-100 text-center border-dashed">
-                {filePreview ? (
-                  <div className="space-y-2">
-                    <img
-                      src={filePreview}
-                      alt="Garment preview"
-                      className="h-36 mx-auto rounded object-contain"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFile(null);
-                        setFilePreview(null);
-                      }}
-                      className="text-[11px] text-rust hover:underline"
+                <div className="flex flex-col sm:flex-row gap-3 items-start">
+                  <div className="flex-1 w-full">
+                    <label
+                      htmlFor="garment-file-input"
+                      className="border border-dashed border-stone rounded p-4 text-center cursor-pointer hover:bg-stone-light/30 transition-colors block"
                     >
-                      Change image
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <Upload className="w-6 h-6 mx-auto mb-1 text-stone-dark" />
-                    <p className="text-xs font-semibold text-ink mb-2">
-                      Upload garment image on clean background
-                    </p>
-                    <label className="inline-flex items-center px-3 py-1.5 bg-white text-ink border border-stone rounded text-xs font-semibold cursor-pointer hover:bg-stone-light/40 transition-colors">
-                      <span>Choose File</span>
+                      <Upload className="w-5 h-5 text-ink-subtle mx-auto mb-1" />
+                      <span className="text-xs text-ink-muted block">
+                        {selectedFile ? selectedFile.name : 'Upload product JPG or PNG'}
+                      </span>
                       <input
+                        id="garment-file-input"
                         type="file"
-                        accept="image/png,image/jpeg,image/webp"
+                        accept="image/png,image/jpeg"
                         onChange={handleFileChange}
-                        className="hidden"
+                        className="sr-only"
                       />
                     </label>
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={handleUseSampleGarment}
+                    className="px-3 py-3 rounded border border-stone bg-stone-light/40 hover:bg-stone text-xs font-semibold text-ink transition-colors whitespace-nowrap w-full sm:w-auto"
+                  >
+                    Use Sample Garment
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={isCreating || !selectedFile || !label.trim()}
-              className="w-full py-3 bg-helper hover:bg-helper-dark text-white rounded text-xs font-semibold transition-colors disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5 shadow-sm"
-            >
-              {isCreating ? (
-                <span>Submitting Proposal...</span>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Submit Garment Proposal</span>
-                </>
+              {filePreview && (
+                <div className="flex items-center gap-3 p-2 bg-stone-light/20 rounded border border-stone">
+                  <img
+                    src={filePreview}
+                    alt="Garment preview"
+                    className="w-12 h-12 object-cover rounded border border-stone"
+                  />
+                  <div className="text-xs text-ink-muted">
+                    <p className="font-semibold text-ink">{label || 'Garment ready'}</p>
+                    <p className="text-[11px]">Ready for virtual drape</p>
+                  </div>
+                </div>
               )}
-            </button>
-          </form>
-        </div>
-      )}
 
-      {/* Proposals Tracking Stream */}
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isCreating}
+                  className="w-full py-2.5 bg-helper hover:bg-helper-dark text-white rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isCreating ? 'Submitting Proposal...' : 'Propose to Wearer'}</span>
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="text-center py-6 text-xs text-ink-muted">
+              {isRevoked
+                ? 'Session has been revoked.'
+                : 'Maximum proposal cap reached for this Try-On Pass.'}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Submitted Proposals Section */}
       <div className="space-y-4">
-        <h2 className="font-serif text-xl font-bold text-ink">
-          Your Submitted Proposals ({session.proposals.length})
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-serif text-xl font-bold text-ink">
+            Submitted Garments & Wearer Feedback
+          </h2>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="text-xs text-ink-muted hover:text-ink flex items-center gap-1 font-semibold"
+          >
+            <RefreshCw className="w-3 h-3" />
+            <span>Refresh</span>
+          </button>
+        </div>
 
         {session.proposals.length === 0 ? (
-          <div className="parcel-card p-8 text-center bg-white border border-stone">
-            <p className="text-xs text-ink-muted">
-              You haven't proposed any garments yet. Use the form above to suggest an outfit!
+          <div className="parcel-card p-12 text-center bg-white space-y-3">
+            <Sparkles className="w-8 h-8 text-ink-subtle mx-auto" />
+            <h3 className="font-serif text-base font-bold text-ink">No Garments Proposed Yet</h3>
+            <p className="text-xs text-ink-muted max-w-md mx-auto leading-relaxed">
+              Use the form above to propose candidate garments. The wearer will receive your proposals
+              and try them on in their private fitting mirror.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {session.proposals.map((proposal) => {
-              const isGenerating =
-                proposal.status === 'PROCESSING' || proposal.status === 'SUBMITTED';
-              const isReviewed = proposal.status === 'REVIEWED' && proposal.decision;
-
-              return (
-                <div
-                  key={proposal.id}
-                  className="parcel-card p-5 bg-white border-2 border-stone flex flex-col justify-between space-y-4"
-                >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {session.proposals.map((proposal) => (
+              <div key={proposal.id} className="parcel-card p-5 bg-white space-y-4">
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div>
-                        <span className="seal-badge seal-helper capitalize text-[10px] mb-1">
-                          {proposal.garment_category.replace('_', ' ')}
-                        </span>
-                        <h4 className="font-serif font-bold text-base text-ink">
-                          {proposal.label}
-                        </h4>
-                      </div>
-                      <span className="text-[11px] font-mono text-ink-subtle">
-                        {proposal.status}
-                      </span>
-                    </div>
-
-                    <div className="parcel-border rounded bg-parchment-100 p-2 text-center mb-3">
-                      {proposal.garment_preview_url ? (
-                        <img
-                          src={proposal.garment_preview_url}
-                          alt={proposal.label}
-                          className="h-44 mx-auto rounded object-contain"
-                        />
-                      ) : (
-                        <div className="h-44 flex items-center justify-center text-xs text-ink-muted">
-                          Garment preview uploaded
-                        </div>
-                      )}
-                    </div>
-
-                    {proposal.product_url && (
-                      <a
-                        href={proposal.product_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-helper hover:underline font-medium mb-2"
-                      >
-                        <span>Retailer Store Link</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-ink-subtle block">
+                      {proposal.garment_category}
+                    </span>
+                    <h4 className="font-serif text-base font-bold text-ink">{proposal.label}</h4>
+                    {proposal.brand && (
+                      <p className="text-xs text-ink-muted">Brand: {proposal.brand}</p>
                     )}
                   </div>
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded capitalize ${
+                      proposal.status === 'SUCCEEDED'
+                        ? 'bg-wearer-light text-wearer'
+                        : proposal.status === 'FAILED'
+                        ? 'bg-rust-light text-rust'
+                        : 'bg-stone-light/60 text-ink-muted'
+                    }`}
+                  >
+                    {proposal.status.toLowerCase()}
+                  </span>
+                </div>
 
-                  {/* Status / Decision Feedback Slip */}
-                  <div className="pt-3 border-t border-stone-light">
-                    {proposal.status === 'CREATED' ? (
-                      <button
-                        type="button"
-                        onClick={() => generateTryOnMutation.mutate(proposal.id)}
-                        disabled={generateTryOnMutation.isPending}
-                        className="w-full py-2 bg-rust hover:bg-rust-dark text-white rounded text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Request YouCam Clothes V4 Try-On</span>
-                      </button>
-                    ) : isGenerating ? (
-                      <div className="p-3 rounded bg-parchment-100 border border-stone text-center space-y-1">
-                        <div className="w-4 h-4 rounded-full border-2 border-rust border-t-transparent animate-spin mx-auto" />
-                        <div className="text-xs font-semibold text-ink">
-                          YouCam Clothes V4 Rendering...
-                        </div>
-                        <div className="text-[11px] text-ink-subtle">
-                          Result goes directly to wearer's mirror.
-                        </div>
-                      </div>
-                    ) : proposal.status === 'SUCCEEDED' && !isReviewed ? (
-                      <div className="p-3 rounded bg-amber-50 border border-amber-200 text-center">
-                        <div className="text-xs font-semibold text-amber-900">
-                          Waiting for Wearer Review
-                        </div>
-                        <div className="text-[11px] text-amber-800">
-                          Rendered in wearer's private mirror.
-                        </div>
-                      </div>
-                    ) : isReviewed ? (
-                      <div
-                        className={`p-3 rounded border text-left ${
-                          proposal.decision === 'APPROVE'
-                            ? 'bg-success-light/60 border-success text-success-dark'
-                            : proposal.decision === 'MAYBE'
-                            ? 'bg-amber-50 border-amber-300 text-amber-900'
-                            : 'bg-rust-light/60 border-rust text-rust-dark'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 font-bold text-xs uppercase mb-1">
-                          {proposal.decision === 'APPROVE' && (
-                            <CheckCircle2 className="w-4 h-4 text-success" />
-                          )}
-                          {proposal.decision === 'MAYBE' && (
-                            <HelpCircle className="w-4 h-4 text-amber-700" />
-                          )}
-                          {proposal.decision === 'PASS' && (
-                            <XCircle className="w-4 h-4 text-rust" />
-                          )}
-                          <span>Wearer Decision: {proposal.decision}</span>
-                        </div>
-                        {proposal.wearer_note && (
-                          <p className="text-xs italic mt-1 bg-white/70 p-2 rounded border border-black/5 text-ink">
-                            "{proposal.wearer_note}"
-                          </p>
-                        )}
-                      </div>
-                    ) : null}
+                {/* Garment Image Preview */}
+                <div className="aspect-[4/3] bg-stone-light/40 rounded border border-stone overflow-hidden flex items-center justify-center relative">
+                  {proposal.garment_preview_url ? (
+                    <img
+                      src={proposal.garment_preview_url}
+                      alt={proposal.label}
+                      className="w-full h-full object-contain p-4"
+                    />
+                  ) : (
+                    <span className="text-xs text-ink-subtle">No garment preview</span>
+                  )}
+                  {/* Privacy Badge overlay */}
+                  <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-ink/75 text-white text-[10px] font-mono flex items-center gap-1">
+                    <EyeOff className="w-3 h-3 text-white" />
+                    <span>Wearer Photo Shielded</span>
                   </div>
                 </div>
-              );
-            })}
+
+                {/* Try-On Execution Button if Ready */}
+                {proposal.status === 'READY' && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => generateTryOnMutation.mutate(proposal.id)}
+                      disabled={generateTryOnMutation.isPending || isRevoked}
+                      className="w-full py-2 bg-helper hover:bg-helper-dark text-white rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Request Virtual Try-On</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Wearer Decision Slip Feedback */}
+                <div className="p-3 rounded border border-stone bg-stone-light/20 space-y-1.5">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-ink-subtle block">
+                    Wearer Verdict
+                  </span>
+                  {proposal.decision ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        {proposal.decision === 'APPROVE' && (
+                          <CheckCircle2 className="w-4 h-4 text-wearer" />
+                        )}
+                        {proposal.decision === 'MAYBE' && (
+                          <HelpCircle className="w-4 h-4 text-ink-muted" />
+                        )}
+                        {proposal.decision === 'PASS' && (
+                          <XCircle className="w-4 h-4 text-rust" />
+                        )}
+                        <span className="text-xs font-bold text-ink">
+                          {proposal.decision === 'APPROVE' && 'Approved by Wearer'}
+                          {proposal.decision === 'MAYBE' && 'Marked as Maybe'}
+                          {proposal.decision === 'PASS' && 'Passed'}
+                        </span>
+                      </div>
+                      {proposal.wearer_note && (
+                        <p className="text-xs text-ink-muted italic pl-5">
+                          "{proposal.wearer_note}"
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-ink-muted italic">
+                      Awaiting wearer private review...
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

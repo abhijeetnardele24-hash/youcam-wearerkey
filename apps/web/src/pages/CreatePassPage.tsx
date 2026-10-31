@@ -106,14 +106,17 @@ export const CreatePassPage: React.FC = () => {
         consent_version: '2026-10-30-v1',
       });
 
-      // Step 2: Upload source image with wearer token
+      // Step 1.5: Bootstrap the session to get the wearer session cookie
+      await api.bootstrap(sessionResult.wearer_bootstrap_code, 'wearer');
+
+      // Step 2: Upload source image with authenticated wearer session cookie
       const formData = new FormData();
       formData.append('sourceImage', selectedFile);
 
-      await api.updateWearerSession(sessionResult.wearer_token, formData);
+      await api.updateWearerSession(formData);
 
       // Step 3: Navigate directly to wearer room
-      navigate(`/wearer/${sessionResult.wearer_token}`);
+      navigate('/wearer');
     } catch (err: any) {
       setError(err?.message || 'Failed to initialize Try-On Pass. Please try again.');
       setIsSubmitting(false);
