@@ -1,7 +1,7 @@
 {
   "deployment_status": "LOCAL_VERIFIED_PENDING_EXTERNAL_CLOUD_HOSTING",
-  "evaluated_commit_sha": "54d466be148e9c3effca0aef2e1dce59a6bf4f01",
-  "timestamp": "2026-10-30T19:15:00.000Z",
+  "evaluated_commit_sha": "538a5712c376e0e85ddbb4b9f6beaecf79779f5b",
+  "timestamp": "2026-10-31T05:10:00.000Z",
   "port_configuration": {
     "local_development": {
       "web_frontend_url": "http://localhost:3000",
@@ -18,8 +18,10 @@
     "GET /",
     "GET /create",
     "GET /judge",
-    "GET /wearer/:token",
-    "GET /helper/:token",
+    "GET /wearer",
+    "GET /helper",
+    "GET /receipt",
+    "GET /about",
     "GET /api/health",
     "GET /api/meta",
     "POST /api/sessions",
