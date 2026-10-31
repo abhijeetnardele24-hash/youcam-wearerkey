@@ -3,12 +3,12 @@ import { eq } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { SubmitDecisionRequestSchema, type DeletionStatus } from "@wearerkey/contracts";
-import { decryptProviderIdentifier, signReceiptPayload } from "@wearerkey/domain";
+import { SubmitDecisionRequestSchema } from "@wearerkey/contracts";
+import { decryptProviderIdentifier } from "@wearerkey/domain";
 import { config } from "../config.js";
 import { getDb } from "../db/index.js";
-import { relaySessions, proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
-import { requireRole, requirePurgeRecoveryAuth } from "../middleware/auth.js";
+import { proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
+import { requireRole, requireReceiptAccessAuth } from "../middleware/auth.js";
 import { eventBus } from "../services/event-bus.js";
 import { ephemeralImageStore } from "../services/garment-store.js";
 import { request } from "undici";
@@ -355,7 +355,7 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
   // 6. Wearer Scoped Privacy & Deletion Receipt (Signed Tamper-Evident Receipt v2.0)
   fastify.get(
     "/api/wearer/receipt",
-    { preHandler: [requirePurgeRecoveryAuth] },
+    { preHandler: [requireReceiptAccessAuth] },
     async (req, reply) => {
       const auth = req.authSession!;
       const session = auth.session;

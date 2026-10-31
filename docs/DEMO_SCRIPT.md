@@ -22,7 +22,7 @@ A structured, conversational walkthrough for recording the hackathon demo video.
 ---
 
 ### [0:55 - 1:25] Role B: The Role-Separated Helper Experience
-- **Visual:** Open the Helper Link (`/helper/:token`) in an incognito window or split view.
+- **Visual:** Open the Helper Link (`/helper#bootstrap=...`) in an incognito window or split view.
 - **Narration:**
   > "Now I send this helper link to my friend or stylist. Look at their screen:
   > The helper sees the approved categories and their remaining proposal budget, but there is zero access to my body photo.
@@ -32,7 +32,7 @@ A structured, conversational walkthrough for recording the hackathon demo video.
 ---
 
 ### [1:25 - 1:45] The Decisive Fitting Moment
-- **Visual:** Switch back to Wearer Room (`/wearer/:token`).
+- **Visual:** Switch back to Wearer Room (`/wearer#bootstrap=...`).
 - **Narration:**
   > "Instantly in my private mirror, the YouCam AI Clothes V4 render appears with a responsible AI visual disclaimer.
   > I can compare it side-by-side with my original silhouette.
@@ -42,7 +42,7 @@ A structured, conversational walkthrough for recording the hackathon demo video.
 ---
 
 ### [1:45 - 2:00] Deletion & Conclusion
-- **Visual:** Click "Audit Receipt" (`/receipt/:token`).
+- **Visual:** Click "Audit Receipt" (`/receipt`).
 - **Narration:**
   > "When we're done, clicking revoke deletes the session and requests immediate deletion of remote provider files, generating a machine-verifiable audit receipt.
   > WearerKey: private, collaborative virtual try-on for the next generation of e-commerce. Thank you!"

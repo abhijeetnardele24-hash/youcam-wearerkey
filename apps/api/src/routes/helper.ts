@@ -13,7 +13,7 @@ import {
 import { SubmitProposalRequestSchema } from "@wearerkey/contracts";
 import { config } from "../config.js";
 import { getDb } from "../db/index.js";
-import { relaySessions, proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
+import { proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
 import { requireRole } from "../middleware/auth.js";
 import { sanitizeAndValidateImage } from "../services/image-sanitizer.js";
 import { getProvider } from "../providers/youcam/index.js";

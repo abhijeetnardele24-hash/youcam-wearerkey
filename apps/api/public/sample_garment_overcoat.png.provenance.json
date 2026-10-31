@@ -1,9 +1,10 @@
 {
   "filename": "sample_garment_overcoat.png",
-  "source": "E-Commerce Catalog Garment Reference",
-  "creator": "Product Catalog Studio",
-  "license": "Open Demonstration / E-Commerce Benchmark",
-  "permitted_use": "Virtual try-on garment input evaluation",
+  "fixture_type": "SYNTHETIC_DEMO_ILLUSTRATION",
+  "source": "Synthetic SVG illustration generated via sharp (scripts/generate-sample-assets.ts)",
+  "creator": "WearerKey Project Contributors",
+  "license": "MIT (Synthetic Benchmark Asset)",
+  "permitted_use": "Deterministic local demo fixture and garment input evaluation only — strictly prohibited from live YouCam execution",
   "sha256": "e5c1fe164763194a2fe595c8a30f27902c66b25e8ae571d4ac4b09e2d5c96114",
   "dimensions": {
     "width": 500,

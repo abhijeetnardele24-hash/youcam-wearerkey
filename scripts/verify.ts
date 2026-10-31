@@ -11,7 +11,7 @@ function runStep(name: string, cmd: string, env: Record<string, string> = {}) {
       env: { ...process.env, ...env }
     });
     console.log(`\n✔ ${name} PASSED\n`);
-  } catch (err: any) {
+  } catch (_err: any) {
     console.error(`\n❌ ${name} FAILED\n`);
     process.exit(1);
   }

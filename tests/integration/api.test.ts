@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { eq } from "drizzle-orm";
 import { buildApp } from "../../apps/api/src/server.js";
+import { getDb } from "../../apps/api/src/db/index.js";
+import { relaySessions, proposals } from "../../apps/api/src/db/schema.js";
+import { encryptProviderIdentifier } from "@wearerkey/domain";
 
 function extractCookie(res: any, cookieName: string): string {
   const setCookie = res.headers["set-cookie"];
@@ -11,13 +15,6 @@ function extractCookie(res: any, cookieName: string): string {
     if (match) return match[1];
   }
   return "";
-}
-
-function extractAllCookies(res: any): string {
-  const setCookie = res.headers["set-cookie"];
-  if (!setCookie) return "";
-  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
-  return cookies.map((c) => c.split(";")[0]).join("; ");
 }
 
 describe("WearerKey End-to-End API Integration", () => {
@@ -541,8 +538,8 @@ describe("WearerKey End-to-End API Integration", () => {
     expect([401, 403]).toContain(helperToWearer.statusCode);
   });
 
-  it("P0-A: Purge retry and final receipt remain reachable after session revocation", async () => {
-    // 1. Create session and bootstrap
+  it("P0-A: Dedicated purge recovery lifecycle and access control", async () => {
+    // 1. Create session and bootstrap both wearer and helper
     const createRes = await app.inject({
       method: "POST",
       url: "/api/sessions",
@@ -557,14 +554,26 @@ describe("WearerKey End-to-End API Integration", () => {
     const bootRes = await app.inject({
       method: "POST",
       url: "/api/auth/bootstrap",
-      payload: {
-        bootstrap_code: wearer_bootstrap_code,
-        role: "wearer",
-      },
+      payload: { bootstrap_code: wearer_bootstrap_code, role: "wearer" },
     });
     const wearerCookie = extractCookie(bootRes, "wearerkey_session_wearer");
 
-    // 2. Revoke session -> enters REVOKED state
+    // Wearer mints helper link
+    const helperLinkRes = await app.inject({
+      method: "POST",
+      url: "/api/wearer/helper-link",
+      headers: { cookie: wearerCookie },
+    });
+    const { helper_bootstrap_code } = helperLinkRes.json();
+
+    const helperBoot = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { bootstrap_code: helper_bootstrap_code, role: "helper" },
+    });
+    const helperCookie = extractCookie(helperBoot, "wearerkey_session_helper");
+
+    // Case 1: Confirmed deletion returns receipt and mints NO recovery credential
     const revokeRes = await app.inject({
       method: "DELETE",
       url: "/api/wearer/session",
@@ -573,34 +582,155 @@ describe("WearerKey End-to-End API Integration", () => {
     expect(revokeRes.statusCode).toBe(200);
     const receipt = revokeRes.json();
     expect(receipt.status).toBe("REVOKED");
+    expect(receipt.overall_deletion_status).toBe("CONFIRMED");
+    expect(receipt.receipt_hmac).toBeDefined();
 
-    // 3. Normal wearer routes fail with 410 SESSION_REVOKED
-    const blockedRoute = await app.inject({
+    // No purge recovery cookie minted on confirmed deletion
+    const confirmedRecoveryCookie = extractCookie(revokeRes, "wearerkey_purge_recovery");
+    expect(confirmedRecoveryCookie).toBe("");
+
+    // DB confirms no recovery token hash is stored
+    const db = await getDb();
+    const sessionRows = await db.select().from(relaySessions).where(eq(relaySessions.id, session_id));
+    expect(sessionRows[0].purgeRecoveryTokenHash).toBeNull();
+
+    // Normal wearer and helper routes fail with 410 SESSION_REVOKED
+    const blockedWearer = await app.inject({
       method: "POST",
       url: "/api/wearer/helper-link",
       headers: { cookie: wearerCookie },
     });
-    expect(blockedRoute.statusCode).toBe(410);
-    expect(blockedRoute.json().error).toBe("SESSION_REVOKED");
+    expect(blockedWearer.statusCode).toBe(410);
+    expect(blockedWearer.json().error).toBe("SESSION_REVOKED");
 
-    // 4. Retry-purge route remains REACHABLE via wearer auth or purge recovery token
-    const retryRes = await app.inject({
+    const blockedHelper = await app.inject({
+      method: "POST",
+      url: "/api/helper/proposals",
+      headers: { cookie: helperCookie },
+    });
+    expect(blockedHelper.statusCode).toBe(410);
+    expect(blockedHelper.json().error).toBe("SESSION_REVOKED");
+
+    // Ordinary wearer cookie cannot access retry-purge -> HTTP 410 SESSION_REVOKED
+    const wearerRetry = await app.inject({
       method: "POST",
       url: "/api/wearer/session/retry-purge",
       headers: { cookie: wearerCookie },
     });
-    expect(retryRes.statusCode).toBe(200);
-    expect(retryRes.json().overall_deletion_status).toBeDefined();
+    expect(wearerRetry.statusCode).toBe(410);
+    expect(wearerRetry.json().error).toBe("SESSION_REVOKED");
 
-    // 5. GET /api/receipts remains reachable and serves immutable signed receipt
-    const getReceiptRes = await app.inject({
-      method: "GET",
-      url: "/api/receipts",
+    // Ordinary helper cookie cannot access retry-purge -> HTTP 410 SESSION_REVOKED
+    const helperRetry = await app.inject({
+      method: "POST",
+      url: "/api/wearer/session/retry-purge",
+      headers: { cookie: helperCookie },
+    });
+    expect(helperRetry.statusCode).toBe(410);
+    expect(helperRetry.json().error).toBe("SESSION_REVOKED");
+
+    // Anonymous request without purge credential -> HTTP 401 UNAUTHORIZED
+    const anonRetry = await app.inject({
+      method: "POST",
+      url: "/api/wearer/session/retry-purge",
+    });
+    expect(anonRetry.statusCode).toBe(401);
+    expect(anonRetry.json().error).toBe("UNAUTHORIZED");
+  });
+
+  it("P0-B: Partial deletion issues exactly one scoped recovery credential which authorizes retry and receipt", async () => {
+    // 1. Create a session
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {
+        allowed_categories: ["outer"],
+        max_proposals: 2,
+        expires_in_hours: 1,
+      },
+    });
+    const { session_id, wearer_bootstrap_code } = createRes.json();
+
+    const bootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { bootstrap_code: wearer_bootstrap_code, role: "wearer" },
+    });
+    const wearerCookie = extractCookie(bootRes, "wearerkey_session_wearer");
+
+    // Insert two proposals: one valid, one with malformed ciphertext so partial failure occurs during executePurge
+    const db = await getDb();
+    const encKey = process.env.PROVIDER_ID_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY_HEX || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    await db.insert(proposals).values([
+      {
+        sessionId: session_id,
+        label: "Valid Garment Proposal",
+        garmentCategory: "outer",
+        currency: "USD",
+        status: "SUCCEEDED",
+        garmentFileIdCiphertext: encryptProviderIdentifier("file_success_1", encKey),
+      },
+      {
+        sessionId: session_id,
+        label: "Malformed Garment Proposal",
+        garmentCategory: "outer",
+        currency: "USD",
+        status: "SUCCEEDED",
+        garmentFileIdCiphertext: "malformed:not:valid:iv:ciphertext",
+      }
+    ]);
+
+    // Revoke session -> partial failure occurs due to malformed task ciphertext
+    const revokeRes = await app.inject({
+      method: "DELETE",
+      url: "/api/wearer/session",
       headers: { cookie: wearerCookie },
     });
-    expect(getReceiptRes.statusCode).toBe(200);
-    expect(getReceiptRes.json().session_id).toBe(session_id);
-    expect(getReceiptRes.json().receipt_hmac).toBeDefined();
+    expect(revokeRes.statusCode).toBe(200);
+    const receipt = revokeRes.json();
+    expect(receipt.status).toBe("REVOKED");
+    expect(receipt.overall_deletion_status).toBe("PARTIAL_FAILURE");
+
+    // Partial deletion mints exactly one scoped wearerkey_purge_recovery cookie
+    const recoveryCookie = extractCookie(revokeRes, "wearerkey_purge_recovery");
+    expect(recoveryCookie).toContain("wearerkey_purge_recovery=");
+
+    // In DB, purgeRecoveryTokenHash is set
+    const dbRows = await db.select().from(relaySessions).where(eq(relaySessions.id, session_id));
+    expect(dbRows[0].purgeRecoveryTokenHash).not.toBeNull();
+    expect(dbRows[0].purgeRecoveryExpiresAt).not.toBeNull();
+
+    // Valid recovery cookie succeeds on GET /api/receipts
+    const receiptRes = await app.inject({
+      method: "GET",
+      url: "/api/receipts",
+      headers: { cookie: recoveryCookie },
+    });
+    expect(receiptRes.statusCode).toBe(200);
+    expect(receiptRes.json().session_id).toBe(session_id);
+
+    // Invalid recovery credential -> HTTP 403 FORBIDDEN
+    const invalidRes = await app.inject({
+      method: "GET",
+      url: "/api/receipts",
+      headers: { cookie: "wearerkey_purge_recovery=invalid_bogus_token_123456" },
+    });
+    expect(invalidRes.statusCode).toBe(403);
+    expect(invalidRes.json().error).toBe("FORBIDDEN");
+
+    // Expired recovery credential -> HTTP 410 PURGE_TOKEN_EXPIRED
+    await db
+      .update(relaySessions)
+      .set({ purgeRecoveryExpiresAt: new Date(Date.now() - 60000) })
+      .where(eq(relaySessions.id, session_id));
+
+    const expiredRes = await app.inject({
+      method: "GET",
+      url: "/api/receipts",
+      headers: { cookie: recoveryCookie },
+    });
+    expect(expiredRes.statusCode).toBe(410);
+    expect(expiredRes.json().error).toBe("PURGE_TOKEN_EXPIRED");
   });
 
   it("Rate limiting: triggers HTTP 429 when rate limit threshold is exceeded", async () => {

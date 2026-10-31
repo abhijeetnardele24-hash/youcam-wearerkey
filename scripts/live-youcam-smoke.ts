@@ -45,8 +45,9 @@ export interface DeletionVerificationRecord {
 }
 
 export interface FixtureProvenanceRecord {
-  person_fixture_type: "LICENSED_PHOTOGRAPH" | "USER_PROVIDED_PHOTOGRAPH" | "SYNTHETIC_FALLBACK";
-  garment_fixture_type: "LICENSED_PHOTOGRAPH" | "USER_PROVIDED_PHOTOGRAPH" | "SYNTHETIC_FALLBACK";
+  person_fixture_type: "USER_PROVIDED_PHOTOGRAPH" | "SYNTHETIC_DEMO_ILLUSTRATION" | "UNVERIFIED";
+  garment_fixture_type: "USER_PROVIDED_PHOTOGRAPH" | "SYNTHETIC_DEMO_ILLUSTRATION" | "UNVERIFIED";
+  authority: "USER_SUPPLIED_PROVENANCE_NOT_INDEPENDENTLY_VERIFIED";
   license_or_provenance: string;
   person_sha256?: string;
   garment_sha256?: string;
@@ -159,9 +160,26 @@ export async function validateFixture(fixturePath: string): Promise<FixtureValid
     };
   }
 
-  if (!manifest.license || !manifest.source) {
-    return { valid: false, error: `Provenance manifest missing required license or source attributes.` };
+  // Reject bundled synthetic illustrations derived from SVG assets
+  if (
+    manifest.fixture_type === "SYNTHETIC_DEMO_ILLUSTRATION" ||
+    manifest.fixture_type === "SYNTHETIC_FALLBACK" ||
+    path.basename(fixturePath).includes("sample_wearer_reference") ||
+    path.basename(fixturePath).includes("sample_garment_overcoat") ||
+    path.basename(fixturePath).includes("sample_vto_result")
+  ) {
+    return {
+      valid: false,
+      error: `Synthetic demo illustrations derived from SVG assets are strictly rejected for live provider verification. Provide genuine photographs via LIVE_SMOKE_PERSON_FIXTURE and LIVE_SMOKE_GARMENT_FIXTURE.`
+    };
   }
+
+  if (!manifest.license && !manifest.source && !manifest.provenance) {
+    return { valid: false, error: `Provenance manifest missing required license, source, or provenance attributes.` };
+  }
+
+  manifest.authority = "USER_SUPPLIED_PROVENANCE_NOT_INDEPENDENTLY_VERIFIED";
+  manifest.fixture_type = "USER_PROVIDED_PHOTOGRAPH";
 
   return {
     valid: true,
@@ -237,21 +255,42 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
   // 2. Locate and validate photographic fixtures
   console.log(`[WearerKey Live Smoke] Resolving test image fixtures...`);
 
-  let personFixturePath = options.personFixturePath ?? process.env.LIVE_SMOKE_PERSON_FIXTURE;
-  let garmentFixturePath = options.garmentFixturePath ?? process.env.LIVE_SMOKE_GARMENT_FIXTURE;
+  const personFixturePath = options.personFixturePath ?? process.env.LIVE_SMOKE_PERSON_FIXTURE;
+  const garmentFixturePath = options.garmentFixturePath ?? process.env.LIVE_SMOKE_GARMENT_FIXTURE;
 
-  if (!personFixturePath) {
-    const candidate = path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png");
-    if (fs.existsSync(candidate)) personFixturePath = candidate;
+  if (!personFixturePath || !garmentFixturePath) {
+    const missingMsg = "Live smoke verification requires explicit paths via LIVE_SMOKE_PERSON_FIXTURE and LIVE_SMOKE_GARMENT_FIXTURE. Bundled synthetic demo illustrations cannot be used for live verification.";
+    console.error(`[WearerKey Live Smoke] FAIL-CLOSED: ${missingMsg}`);
+
+    const receipt: SmokeReceipt = {
+      evaluated_commit_sha: commitSha,
+      provider_mode: "LIVE_YOUCAM",
+      endpoint: baseUrl,
+      timestamp: new Date().toISOString(),
+      connectivity_status: "FIXTURE_REJECTED",
+      http_status: 400,
+      live_execution_verified: false,
+      generation_verified: false,
+      deletion_verified: false,
+      model_name: "YouCam AI Clothes V4",
+      api_family: "AI_CLOTHES_V4",
+      reason: missingMsg,
+      error: "Missing required LIVE_SMOKE_PERSON_FIXTURE or LIVE_SMOKE_GARMENT_FIXTURE"
+    };
+
+    fs.writeFileSync(
+      path.join(docsDir, "live-youcam-receipt.json"),
+      JSON.stringify(receipt, null, 2)
+    );
+
+    if (requireLive && !options.customProvider) {
+      process.exit(1);
+    }
+    return receipt;
   }
 
-  if (!garmentFixturePath) {
-    const candidate = path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png");
-    if (fs.existsSync(candidate)) garmentFixturePath = candidate;
-  }
-
-  const personCheck = await validateFixture(personFixturePath || "");
-  const garmentCheck = await validateFixture(garmentFixturePath || "");
+  const personCheck = await validateFixture(personFixturePath);
+  const garmentCheck = await validateFixture(garmentFixturePath);
 
   if (!personCheck.valid || !garmentCheck.valid) {
     const errorDetail = `Person check: ${personCheck.error || "OK"}; Garment check: ${garmentCheck.error || "OK"}`;
@@ -303,9 +342,10 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
   };
 
   const provenance: FixtureProvenanceRecord = {
-    person_fixture_type: "LICENSED_PHOTOGRAPH",
-    garment_fixture_type: "LICENSED_PHOTOGRAPH",
-    license_or_provenance: `${personCheck.manifest.license} / ${garmentCheck.manifest.license}`,
+    person_fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+    garment_fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+    authority: "USER_SUPPLIED_PROVENANCE_NOT_INDEPENDENTLY_VERIFIED",
+    license_or_provenance: `${personCheck.manifest.license || personCheck.manifest.provenance || "User Provided"} / ${garmentCheck.manifest.license || garmentCheck.manifest.provenance || "User Provided"}`,
     person_sha256: personCheck.sha256,
     garment_sha256: garmentCheck.sha256,
     manifest_verified: true

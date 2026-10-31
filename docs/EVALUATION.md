@@ -15,10 +15,10 @@ Every claim in the WearerKey submission is backed by reproducible automated suit
 | :--- | :--- | :--- | :--- |
 | **Unit Testing (Domain & Crypto)** | `@wearerkey/domain` | 20 / 20 tests passed | ✅ PASSED |
 | **Provider Contract Testing** | `YouCamClothesProvider` | 18 / 18 tests passed | ✅ PASSED |
-| **End-to-End API Integration** | `@wearerkey/api` | 13 / 13 tests passed | ✅ PASSED |
-| **Smoke Script & Image Header Testing** | `live-youcam-smoke` | 8 / 8 tests passed | ✅ PASSED |
+| **End-to-End API Integration** | `@wearerkey/api` | 14 / 14 tests passed | ✅ PASSED |
+| **Smoke Script & Image Header Testing** | `live-youcam-smoke` | 10 / 10 tests passed | ✅ PASSED |
 | **Claims & Evidence Verification** | `check-claims` | 8 / 8 tests passed | ✅ PASSED |
-| **Total Automated Vitest Suite** | Vitest Runner (5 suites) | 67 / 67 tests passed | ✅ PASSED |
+| **Total Automated Vitest Suite** | Vitest Runner (5 suites) | 70 / 70 tests passed | ✅ PASSED |
 | **Browser E2E User Journeys** | Playwright (Desktop + Mobile) | 10 / 10 tests passed | ✅ PASSED |
 | **Accessibility (WCAG 2.1 AA)** | Axe-Core (Home, Create, Judge, Wearer, Helper) | 0 violations among tested views | ✅ PASSED |
 | **Security & Secrets Scan** | Git-tracked file scanner | 0 exposed secrets detected | ✅ PASSED |
@@ -42,7 +42,7 @@ Every claim in the WearerKey submission is backed by reproducible automated suit
 - **Upload Image Protocol:** Exercises official YouCam presigned S2S upload protocol (`POST /s2s/v2.0/file`).
 - **Task Dispatch:** Validates `/s2s/v2.0/task/cloth-v4` dispatch payload and error handling.
 - **Polling & Exponential Backoff:** Polls task status; respects `Retry-After` headers on HTTP 429; handles `SUCCEEDED` and `FAILED` terminal states; gracefully times out.
-- **Remote Deletion:** Calls official `POST /s2s/v2.0/task/delete` and fallback `DELETE /s2s/v2.0/task/cloth-v4?task_id=...`, followed by `DELETE /s2s/v2.0/file/{fileId}`.
+- **Remote Deletion:** Calls official `POST /s2s/v2.0/task/delete`, followed by `DELETE /s2s/v2.0/file/{fileId}`.
 
 ### 2.3 API Integration Tests (`tests/integration/api.test.ts`)
 - **Two-Role Shopping Lifecycle:** Creates pass, uploads source photo, mints helper link, proposes garment, dispatches VTO task, records wearer decision, revokes session, and verifies HTTP 410 Gone on post-revocation requests.

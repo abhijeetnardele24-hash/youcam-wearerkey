@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { verifyReceiptSignature } from "@wearerkey/domain";
 import { ReceiptVerificationRequestSchema } from "@wearerkey/contracts";
 import { config } from "../config.js";
-import { requirePurgeRecoveryAuth } from "../middleware/auth.js";
+import { requireReceiptAccessAuth } from "../middleware/auth.js";
 
 export const receiptRoutes: FastifyPluginAsync = async (fastify) => {
   const signingKey = config.RECEIPT_SIGNING_KEY || config.ENCRYPTION_KEY_HEX;
@@ -42,7 +42,7 @@ export const receiptRoutes: FastifyPluginAsync = async (fastify) => {
   // 2. Query Scoped Receipt via Authenticated Session / Purge Recovery (No tokens in URL)
   fastify.get(
     "/api/receipts",
-    { preHandler: [requirePurgeRecoveryAuth] },
+    { preHandler: [requireReceiptAccessAuth] },
     async (req, reply) => {
       const auth = req.authSession!;
       const session = auth.session;

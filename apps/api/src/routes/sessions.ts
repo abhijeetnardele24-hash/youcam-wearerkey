@@ -417,18 +417,14 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
           ? "CONFIRMED"
           : "FAILED";
 
-    const totalRequested = tasksTotal + garmentsTotal + sourcesTotal;
+    const _totalRequested = tasksTotal + garmentsTotal + sourcesTotal;
     const anyFailed = tasksFailed > 0 || garmentsFailed > 0 || sourcesFailed > 0;
     const anySucceeded = tasksDeleted > 0 || garmentsDeleted > 0 || sourcesDeleted > 0;
 
     const overallStatus: DeletionStatus =
-      totalRequested === 0
-        ? "NOT_REQUESTED"
-        : !anyFailed
-          ? "CONFIRMED"
-          : !anySucceeded
-            ? "FAILED"
-            : "PARTIAL_FAILURE";
+      anyFailed
+        ? (anySucceeded ? "PARTIAL_FAILURE" : "FAILED")
+        : "CONFIRMED";
 
     const now = new Date();
     // CRITICAL SECURITY INVARIANT: purgedAt MUST remain null if any deletion is unconfirmed or failed
@@ -525,7 +521,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
       const auth = req.authSession!;
       const db = await getDb();
 
-      const { receipt, purgeRecoveryToken, overallStatus } = await executePurge(auth.sessionId, false);
+      const { receipt, purgeRecoveryToken } = await executePurge(auth.sessionId, false);
 
       await db.insert(auditEvents).values({
         sessionId: auth.sessionId,

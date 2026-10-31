@@ -180,7 +180,7 @@ export class YouCamClothesProvider implements ClothesTryOnProvider {
             Accept: "application/json"
           }
         });
-      } catch (err: any) {
+      } catch (_err: any) {
         // Fallback query parameter variant if path-param returns network or 404
         try {
           res = await request(`${this.baseUrl}/s2s/v2.0/task/cloth-v4?task_id=${encodeURIComponent(taskId)}`, {

@@ -1,6 +1,7 @@
 # WearerKey — Official Video Demo Storyboard & Narration Script
 
-**Target Duration:** 2 minutes 45 seconds (under 3:00 minute limit)  
+**Target Duration:** 2 minutes 45 seconds (1–3 minute limit)  
+**Platform & Visibility:** Publicly visible on YouTube or Vimeo (Strictly Public — NOT Private, NOT Unlisted)  
 **Resolution:** 1080p 60fps  
 **Audio:** Clear voiceover with subtle background score  
 **Key Feature Demonstrated:** Collaborative shopping with zero wearer-photo leakage powered by YouCam AI Clothes V4.
@@ -91,11 +92,11 @@
 - Navigate to **`/judge`**.
 - Click **"Launch Interactive Split-Screen"**.
 - Show both Wearer and Helper perspectives operating side-by-side in real time.
-- Display terminal showing green CI test suite: 46 automated tests passing, 0 Axe accessibility violations.
+- Display terminal showing green CI test suite: 70 Vitest unit+integration tests and 10 Playwright browser tests passing, 0 Axe accessibility violations in tested states.
 - Closing title card: **WearerKey — Private Collaborative Virtual Try-On**.
 - Links to GitHub repo and YouCam integration docs.
 
 ### Voiceover / Audio
 > "Hackathon judges can test both roles side-by-side in under 30 seconds using our pre-seeded judge tour at `/judge`.  
-> WearerKey is backed by 46 automated tests, full WCAG 2.1 AA accessibility, and zero fabricated claims. Thank you."
+> WearerKey is backed by 70 Vitest tests, 10 Playwright browser tests, 0 Axe accessibility violations in tested states, and zero fabricated claims. Thank you."
 

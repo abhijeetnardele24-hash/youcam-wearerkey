@@ -1,9 +1,10 @@
 {
   "filename": "sample_wearer_reference.png",
-  "source": "Unsplash Reference Photography",
-  "creator": "Unsplash Community Photographer",
-  "license": "Unsplash License (Free for Commercial and Non-Commercial Use)",
-  "permitted_use": "Benchmark testing and virtual try-on evaluation",
+  "fixture_type": "SYNTHETIC_DEMO_ILLUSTRATION",
+  "source": "Synthetic SVG illustration generated via sharp (scripts/generate-sample-assets.ts)",
+  "creator": "WearerKey Project Contributors",
+  "license": "MIT (Synthetic Benchmark Asset)",
+  "permitted_use": "Deterministic local demo fixture and evaluation benchmark only — strictly prohibited from live YouCam execution",
   "sha256": "15624eb2c0152a93e97e6e57a9329c0fece00e10ee47445226d543761c3537a7",
   "dimensions": {
     "width": 600,

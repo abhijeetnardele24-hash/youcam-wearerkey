@@ -31,6 +31,6 @@
   ],
   "docker_container_ready": true,
   "external_cloud_deployment_required": true,
-  "notes": "To produce a live public HTTPS deployment URL, deploy the Dockerfile or repository to a public hosting provider (Render, Railway, Fly.io, or Vercel) and record the resulting URL."
+  "notes": "To produce a live public HTTPS deployment URL, deploy the Dockerfile or repository to a public hosting provider (Render, Railway, Fly.io, or Vercel) and record the resulting URL.",
+  "evidence_authority": "LOCAL_DOCUMENTATION_SNAPSHOT"
 }
-

@@ -1,9 +1,10 @@
 {
   "filename": "sample_vto_result.png",
-  "source": "YouCam AI Clothes V4 Synthetic Try-On Output",
-  "creator": "Perfect Corp YouCam Clothes V4 Model",
-  "license": "Evaluation and Testing Output",
-  "permitted_use": "Deterministic local demo fixture and evaluation benchmark",
+  "fixture_type": "SYNTHETIC_DEMO_ILLUSTRATION",
+  "source": "Synthetic SVG illustration generated via sharp (scripts/generate-sample-assets.ts)",
+  "creator": "WearerKey Project Contributors",
+  "license": "MIT (Synthetic Benchmark Asset)",
+  "permitted_use": "Deterministic local demo fixture and evaluation benchmark only — strictly prohibited from live YouCam execution",
   "sha256": "57e17e1318b00264ca5538f7ff2ecffa6d1ea06ba73347d4c14c5ad8e5b89227",
   "dimensions": {
     "width": 600,

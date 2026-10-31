@@ -7,13 +7,18 @@
   "evidence": {
     "monorepo_build": {
       "status": "PASSED",
-      "packages": ["@wearerkey/contracts", "@wearerkey/domain", "@wearerkey/api", "@wearerkey/web"]
+      "packages": [
+        "@wearerkey/contracts",
+        "@wearerkey/domain",
+        "@wearerkey/api",
+        "@wearerkey/web"
+      ]
     },
     "test_suites": {
       "vitest_unit_and_integration": {
         "status": "PASSED",
-        "total": 67,
-        "passed": 67,
+        "total": 70,
+        "passed": 70,
         "failed": 0,
         "files": [
           "tests/unit/domain.test.ts",
@@ -28,7 +33,10 @@
         "total": 10,
         "passed": 10,
         "failed": 0,
-        "viewports": ["Desktop Chrome (1280x720)", "Mobile Viewport (390x844)"]
+        "viewports": [
+          "Desktop Chrome (1280x720)",
+          "Mobile Viewport (390x844)"
+        ]
       }
     },
     "accessibility": {
@@ -65,7 +73,13 @@
     },
     "deletion_and_receipts": {
       "schema_version": "2.0",
-      "state_machine": ["NOT_REQUESTED", "REQUESTED", "CONFIRMED", "PARTIAL_FAILURE", "FAILED"],
+      "state_machine": [
+        "NOT_REQUESTED",
+        "REQUESTED",
+        "CONFIRMED",
+        "PARTIAL_FAILURE",
+        "FAILED"
+      ],
       "tamper_evidence": "HMAC-SHA256 signature with alphabetical key canonicalization",
       "purge_invariant": "purged_at strictly null when any provider deletion is unconfirmed"
     },
@@ -75,6 +89,6 @@
       "demo_video": "Requires screen recording following docs/VIDEO_STORYBOARD.md",
       "devpost_submission": "Requires final form submission on Devpost portal"
     }
-  }
+  },
+  "evidence_authority": "LOCAL_DOCUMENTATION_SNAPSHOT"
 }
-

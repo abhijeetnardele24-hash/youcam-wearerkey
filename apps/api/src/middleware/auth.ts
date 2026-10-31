@@ -69,7 +69,7 @@ export function requireRole(expectedRole: "wearer" | "helper") {
       )
       .limit(1);
 
-    let session = rows[0];
+    const session = rows[0];
 
     // If not found in active tokens, check if this token belongs to an already revoked session
     if (!session) {
@@ -195,13 +195,99 @@ export async function requirePurgeRecoveryAuth(req: FastifyRequest, reply: Fasti
     return;
   }
 
-  // 3. Fallback: Authenticated Wearer session cookie (allows wearer to inspect receipt or retry purge)
-  // Reusable helper tokens, bootstrap codes, and unauthenticated callers are rejected.
-  const wearerCookie = req.cookies?.wearerkey_session_wearer || req.cookies?.wearerkey_session;
+  // 3. Fallback rejected: Normal wearer and helper credentials MUST NOT access purge recovery.
+  // If ordinary wearer/helper credentials are supplied, detect revoked session and reject with HTTP 410 SESSION_REVOKED.
+  const ordinaryWearer = req.cookies?.wearerkey_session_wearer || req.cookies?.wearerkey_session || (typeof req.headers["x-wearer-session-token"] === "string" ? req.headers["x-wearer-session-token"] : null);
+  const ordinaryHelper = req.cookies?.wearerkey_session_helper || (typeof req.headers["x-helper-session-token"] === "string" ? req.headers["x-helper-session-token"] : null);
+
+  if (ordinaryWearer || ordinaryHelper) {
+    const candidate = (ordinaryWearer || ordinaryHelper)!.trim();
+    const tokenHash = hashSessionToken(candidate);
+    const db = await getDb();
+
+    const rows = await db
+      .select()
+      .from(relaySessions)
+      .where(
+        or(
+          eq(relaySessions.wearerSessionTokenHash, tokenHash),
+          eq(relaySessions.helperSessionTokenHash, tokenHash),
+          eq(relaySessions.revokedWearerSessionTokenHash, tokenHash),
+          eq(relaySessions.revokedHelperSessionTokenHash, tokenHash)
+        )
+      )
+      .limit(1);
+
+    if (rows.length > 0) {
+      return reply.status(410).send({
+        error: "SESSION_REVOKED",
+        message: "Normal wearer and helper session tokens cannot access purge recovery after revocation. Use dedicated purge recovery credential."
+      });
+    }
+  }
+
+  return reply.status(401).send({
+    error: "UNAUTHORIZED",
+    message: "Missing dedicated purge recovery credential. Standard wearer and helper tokens cannot access purge recovery."
+  });
+}
+
+/**
+ * Authorization for inspecting tamper-evident receipts.
+ * Accessible to:
+ * - Authenticated wearer session (active or revoked)
+ * - Dedicated purge-recovery credential
+ * Reject helper tokens (helpers receive redacted receipt via /api/helper/receipt) and unauthenticated callers.
+ */
+export async function requireReceiptAccessAuth(req: FastifyRequest, reply: FastifyReply) {
+  // 1. Check dedicated purge recovery credential
+  let purgeToken: string | null = null;
+  if (req.cookies && req.cookies.wearerkey_purge_recovery) {
+    purgeToken = req.cookies.wearerkey_purge_recovery.trim();
+  }
+  if (!purgeToken) {
+    const purgeHeader = req.headers["x-purge-recovery-token"];
+    if (typeof purgeHeader === "string" && purgeHeader.trim().length > 0) {
+      purgeToken = purgeHeader.trim();
+    }
+  }
+
+  if (purgeToken) {
+    const tokenHash = hashPurgeRecoveryToken(purgeToken);
+    const db = await getDb();
+    const rows = await db
+      .select()
+      .from(relaySessions)
+      .where(eq(relaySessions.purgeRecoveryTokenHash, tokenHash))
+      .limit(1);
+
+    const session = rows[0];
+    if (!session || !session.purgeRecoveryTokenHash || !verifyTokenHash(tokenHash, session.purgeRecoveryTokenHash)) {
+      return reply.status(403).send({
+        error: "FORBIDDEN",
+        message: "Invalid purge recovery credential."
+      });
+    }
+
+    if (session.purgeRecoveryExpiresAt && new Date() >= new Date(session.purgeRecoveryExpiresAt)) {
+      return reply.status(410).send({
+        error: "PURGE_TOKEN_EXPIRED",
+        message: "This purge recovery credential has expired."
+      });
+    }
+    req.authSession = {
+      sessionId: session.id,
+      role: "wearer",
+      session
+    };
+    return;
+  }
+
+  // 2. Check Wearer session token (active or revoked wearer session can view receipt)
+  const wearerCookie = req.cookies?.wearerkey_session_wearer || req.cookies?.wearerkey_session || (typeof req.headers["x-wearer-session-token"] === "string" ? req.headers["x-wearer-session-token"] : null);
   if (wearerCookie) {
     const tokenHash = hashSessionToken(wearerCookie.trim());
     const db = await getDb();
-
     const rows = await db
       .select()
       .from(relaySessions)
@@ -220,14 +306,6 @@ export async function requirePurgeRecoveryAuth(req: FastifyRequest, reply: Fasti
         : session.revokedWearerSessionTokenHash;
 
       if (storedHash && verifyTokenHash(tokenHash, storedHash)) {
-        // Wearer can inspect receipt or retry purge until hard session expiration
-        if (session.expiresAt && new Date() >= new Date(session.expiresAt)) {
-          return reply.status(410).send({
-            error: "SESSION_EXPIRED",
-            message: "This Try-On Pass has reached hard expiration."
-          });
-        }
-
         req.authSession = {
           sessionId: session.id,
           role: "wearer",
@@ -238,8 +316,17 @@ export async function requirePurgeRecoveryAuth(req: FastifyRequest, reply: Fasti
     }
   }
 
+  // 3. Helper tokens cannot access full wearer receipt
+  const helperCookie = req.cookies?.wearerkey_session_helper || (typeof req.headers["x-helper-session-token"] === "string" ? req.headers["x-helper-session-token"] : null);
+  if (helperCookie) {
+    return reply.status(403).send({
+      error: "FORBIDDEN",
+      message: "Helpers cannot access the full wearer receipt. Use /api/helper/receipt."
+    });
+  }
+
   return reply.status(401).send({
     error: "UNAUTHORIZED",
-    message: "Missing dedicated purge recovery credential or wearer session. Standard helper tokens cannot access purge recovery."
+    message: "Missing authenticated wearer session or purge recovery credential."
   });
 }

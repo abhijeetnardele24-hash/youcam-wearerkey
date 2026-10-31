@@ -28,11 +28,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint (zero warnings)
+        run: npx eslint . --max-warnings 0
+
       - name: Typecheck Monorepo
         run: pnpm typecheck
 
-      - name: Run Vitest Unit & Integration Tests (JSON report)
-        run: npx vitest run --reporter=json --outputFile=docs/vitest-results.json
+      - name: Run Vitest Unit & Integration Tests (JSON report + Coverage)
+        run: npx vitest run --coverage --reporter=json --outputFile=docs/vitest-results.json
 
       - name: Build Monorepo (Contracts, Domain, API, Web)
         run: pnpm build
@@ -65,13 +68,42 @@ jobs:
             wearerkey:ci
           sleep 4
           curl -f http://127.0.0.1:3000/api/health || (docker logs wearerkey-test && exit 1)
+          curl -f http://127.0.0.1:3000/api/meta || (docker logs wearerkey-test && exit 1)
           docker rm -f wearerkey-test
+
+      - name: Verify Docker non-root user
+        run: |
+          USER=$(docker run --rm \
+            -e YOUCAM_PROVIDER_MODE=DEMO_FIXTURE \
+            -e PROVIDER_ID_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+            -e SESSION_COOKIE_SECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210 \
+            -e RECEIPT_SIGNING_KEY=11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff \
+            -e ENCRYPTION_KEY_HEX=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+            wearerkey:ci whoami)
+          if [ "$USER" = "root" ]; then echo "ERROR: Container runs as root!" && exit 1; fi
+          echo "Container user: $USER (non-root verified)"
+
+      - name: Generate CI Evidence Artifact
+        run: |
+          node -e "
+          const fs = require('fs');
+          const evidence = {
+            evaluated_commit_sha: process.env.GITHUB_SHA,
+            timestamp: new Date().toISOString(),
+            evidence_authority: 'CI_GENERATED_ARTIFACT',
+            artifact_name: 'wearerkey-verification-' + process.env.GITHUB_SHA,
+            runner: process.env.RUNNER_NAME || 'github-actions',
+            workflow: 'WearerKey Verification CI'
+          };
+          fs.writeFileSync('docs/ci-evidence-snapshot.json', JSON.stringify(evidence, null, 2));
+          console.log('CI evidence written:', JSON.stringify(evidence, null, 2));
+          "
 
       - name: Upload Verification Artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: verification-evidence
+          name: wearerkey-verification-${{ github.sha }}
           path: |
             docs/verification-results.json
             docs/vitest-results.json
@@ -79,3 +111,4 @@ jobs:
             docs/live-youcam-receipt.json
             docs/deployment-receipt.json
             docs/evidence-index.json
+            docs/ci-evidence-snapshot.json

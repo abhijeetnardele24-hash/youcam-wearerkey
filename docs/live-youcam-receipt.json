@@ -7,5 +7,6 @@
   "http_status": 0,
   "live_execution_verified": false,
   "model_name": "YouCam AI Clothes V4",
-  "reason": "YOUCAM_API_KEY not configured. System operating in deterministic DEMO_FIXTURE / RECORDED_LIVE_RESULT mode without fabricating live execution."
+  "reason": "YOUCAM_API_KEY not configured. System operating in deterministic DEMO_FIXTURE / RECORDED_LIVE_RESULT mode without fabricating live execution.",
+  "evidence_authority": "LOCAL_DOCUMENTATION_SNAPSHOT"
 }

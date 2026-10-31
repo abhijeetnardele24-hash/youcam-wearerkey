@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import crypto from "node:crypto";
+import nodeCrypto from "node:crypto";
 import { validateFixture, runSmoke } from "../../scripts/live-youcam-smoke.js";
 import { YouCamClothesProvider } from "../../apps/api/src/providers/youcam/youcam-provider.js";
 
@@ -67,22 +67,52 @@ describe("Live YouCam Smoke Script & Fixture Provenance Tests", () => {
     expect(res.error).toMatch(/sha256 mismatch/i);
   });
 
-  it("accepts authentic photographic fixtures with valid .provenance.json manifest", async () => {
-    const srcPhoto = path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png");
-    const srcManifest = path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png.provenance.json");
+  it("rejects bundled SVG-derived PNG samples as synthetic demo illustrations for live verification", async () => {
+    const bundledPath = path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png");
+    const res = await validateFixture(bundledPath);
+    expect(res.valid).toBe(false);
+    expect(res.error).toMatch(/synthetic demo illustrations/i);
+  });
 
-    const destPhoto = path.join(tempDir, "sample_wearer.png");
-    const destManifest = path.join(tempDir, "sample_wearer.png.provenance.json");
+  it("bundled samples cannot produce live_execution_verified: true in runSmoke", async () => {
+    const docsDir = path.join(tempDir, "docs");
+    const receipt = await runSmoke({
+      apiKey: "fake_key_1234567890",
+      baseUrl: "https://fake.url",
+      personFixturePath: path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png"),
+      garmentFixturePath: path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png"),
+      docsDir,
+      requireLive: false,
+      commitSha: "sha_bundled_test"
+    });
 
-    fs.copyFileSync(srcPhoto, destPhoto);
-    fs.copyFileSync(srcManifest, destManifest);
+    expect(receipt.live_execution_verified).toBe(false);
+    expect(receipt.connectivity_status).toBe("FIXTURE_REJECTED");
+  });
 
-    const res = await validateFixture(destPhoto);
+  it("accepts user-supplied photographic fixtures with honest USER_SUPPLIED_PROVENANCE_NOT_INDEPENDENTLY_VERIFIED authority", async () => {
+    const rawBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png"));
+    const photoPath = path.join(tempDir, "user_photo.png");
+    fs.writeFileSync(photoPath, rawBytes);
+
+    const hash = nodeCrypto.createHash("sha256").update(rawBytes).digest("hex");
+    const manifestPath = path.join(tempDir, "user_photo.png.provenance.json");
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Camera Capture",
+        license: "User Owned",
+        sha256: hash
+      })
+    );
+
+    const res = await validateFixture(photoPath);
     expect(res.valid).toBe(true);
     expect(res.width).toBeGreaterThanOrEqual(400);
     expect(res.height).toBeGreaterThanOrEqual(400);
-    expect(res.manifest.source).toBeDefined();
-    expect(res.sha256).toBeDefined();
+    expect(res.manifest.authority).toBe("USER_SUPPLIED_PROVENANCE_NOT_INDEPENDENTLY_VERIFIED");
+    expect(res.manifest.fixture_type).toBe("USER_PROVIDED_PHOTOGRAPH");
   });
 
   it("runSmoke writes truthful DEMO_FIXTURE receipt when YOUCAM_API_KEY is missing", async () => {
@@ -108,16 +138,32 @@ describe("Live YouCam Smoke Script & Fixture Provenance Tests", () => {
   it("runSmoke executes fail-closed deletions in finally block even when task polling throws an error", async () => {
     const docsDir = path.join(tempDir, "docs");
 
-    // Copy valid fixtures
-    const personPhoto = path.join(tempDir, "person.png");
-    const personManifest = path.join(tempDir, "person.png.provenance.json");
-    fs.copyFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png"), personPhoto);
-    fs.copyFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png.provenance.json"), personManifest);
+    // Create user-supplied photographic fixtures with matching manifest
+    const personPhoto = path.join(tempDir, "user_person.png");
+    const personBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png"));
+    fs.writeFileSync(personPhoto, personBytes);
+    fs.writeFileSync(
+      `${personPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Camera Capture",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(personBytes).digest("hex")
+      })
+    );
 
-    const garmentPhoto = path.join(tempDir, "garment.png");
-    const garmentManifest = path.join(tempDir, "garment.png.provenance.json");
-    fs.copyFileSync(path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png"), garmentPhoto);
-    fs.copyFileSync(path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png.provenance.json"), garmentManifest);
+    const garmentPhoto = path.join(tempDir, "user_garment.png");
+    const garmentBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png"));
+    fs.writeFileSync(garmentPhoto, garmentBytes);
+    fs.writeFileSync(
+      `${garmentPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Garment Photo",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(garmentBytes).digest("hex")
+      })
+    );
 
     // Mock provider that fails during polling
     const mockProvider = new YouCamClothesProvider("https://fake.url", "valid_api_key_1234567890");
@@ -165,15 +211,31 @@ describe("Live YouCam Smoke Script & Fixture Provenance Tests", () => {
   it("runSmoke records successful live execution when generation and task deletion confirm", async () => {
     const docsDir = path.join(tempDir, "docs");
 
-    const personPhoto = path.join(tempDir, "person.png");
-    const personManifest = path.join(tempDir, "person.png.provenance.json");
-    fs.copyFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png"), personPhoto);
-    fs.copyFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png.provenance.json"), personManifest);
+    const personPhoto = path.join(tempDir, "user_person2.png");
+    const personBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png"));
+    fs.writeFileSync(personPhoto, personBytes);
+    fs.writeFileSync(
+      `${personPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Camera Capture",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(personBytes).digest("hex")
+      })
+    );
 
-    const garmentPhoto = path.join(tempDir, "garment.png");
-    const garmentManifest = path.join(tempDir, "garment.png.provenance.json");
-    fs.copyFileSync(path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png"), garmentPhoto);
-    fs.copyFileSync(path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png.provenance.json"), garmentManifest);
+    const garmentPhoto = path.join(tempDir, "user_garment2.png");
+    const garmentBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png"));
+    fs.writeFileSync(garmentPhoto, garmentBytes);
+    fs.writeFileSync(
+      `${garmentPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Garment Photo",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(garmentBytes).digest("hex")
+      })
+    );
 
     const mockProvider = new YouCamClothesProvider("https://fake.url", "valid_api_key_1234567890");
     vi.spyOn(mockProvider, "uploadImage").mockImplementation(async (_, type) => ({
@@ -215,5 +277,8 @@ describe("Live YouCam Smoke Script & Fixture Provenance Tests", () => {
     expect(receipt.connectivity_status).toBe("CONNECTED");
     expect(receipt.evaluated_commit_sha).toBe("commit_success_sha");
     expect(receipt.fixture_provenance?.manifest_verified).toBe(true);
+    expect(receipt.fixture_provenance?.authority).toBe("USER_SUPPLIED_PROVENANCE_NOT_INDEPENDENTLY_VERIFIED");
+    expect(receipt.fixture_provenance?.person_fixture_type).toBe("USER_PROVIDED_PHOTOGRAPH");
   });
 });
+

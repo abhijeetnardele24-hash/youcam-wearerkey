@@ -19,7 +19,8 @@ export class FakeYouCamProvider implements ClothesTryOnProvider {
 
   constructor(
     private readonly defaultDelayMs = 50,
-    private readonly simulatedError: string | null = null
+    private readonly simulatedError: string | null = null,
+    private readonly simulateDeletionFailure = false
   ) {}
 
   async checkCost(_category: GarmentCategory): Promise<{ units: number; currency: string }> {
@@ -37,7 +38,7 @@ export class FakeYouCamProvider implements ClothesTryOnProvider {
     return providerFile;
   }
 
-  async createTask(input: ClothesTaskInput): Promise<ProviderTask> {
+  async createTask(_input: ClothesTaskInput): Promise<ProviderTask> {
     const taskId = `fake_task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     if (this.simulatedError) {
@@ -80,17 +81,28 @@ export class FakeYouCamProvider implements ClothesTryOnProvider {
   }
 
   async deleteTask(taskId: string): Promise<ProviderDeletionResult> {
+    if (this.simulateDeletionFailure || this.simulatedError === "PURGE_FAILURE") {
+      return {
+        taskId,
+        confirmed: false,
+        providerStatus: "FAILED",
+        deletionMode: "SIMULATED"
+      };
+    }
     this.deletedTasks.add(taskId);
     this.tasks.delete(taskId);
     return {
       taskId,
-      confirmed: false,
+      confirmed: true,
       providerStatus: "DELETED",
       deletionMode: "SIMULATED"
     };
   }
 
   async deleteFile(fileId: string): Promise<boolean> {
+    if (this.simulateDeletionFailure || this.simulatedError === "PURGE_FAILURE") {
+      return false;
+    }
     this.deletedFiles.add(fileId);
     this.files.delete(fileId);
     return true;

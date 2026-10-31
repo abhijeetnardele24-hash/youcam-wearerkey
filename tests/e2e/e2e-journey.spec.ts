@@ -120,7 +120,7 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     await expect(wearerFrame.getByText(/Revoke Try-On Pass\?/i)).not.toBeVisible();
   });
 
-  test('Full multi-step collaboration journey: create pass, helper proposal, try-on, decision, revocation, and receipt', async ({ browser, baseURL }) => {
+  test('Full multi-step collaboration journey: create pass, helper proposal, try-on, decision, revocation, and receipt', async ({ browser, baseURL: _baseURL }) => {
     // 1. Wearer Context: create pass from scratch
     const wearerContext = await browser.newContext();
     const wearerPage = await wearerContext.newPage();
@@ -217,11 +217,38 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     // Helper room also updates to reflect revocation
     await expect(helperPage.getByText(/Try-On Pass Revoked by Wearer/i)).toBeVisible({ timeout: 15000 });
 
-    // 9. Run Axe Accessibility Scan on Revoked States
+    // Assert ordinary role cookies return 410 on protected routes after revocation
+    const wearerStatusAfterRevoke = await wearerPage.evaluate(async () => {
+      const res = await fetch('/api/wearer/session', { method: 'GET' });
+      return res.status;
+    });
+    expect(wearerStatusAfterRevoke).toBe(410);
+
+    const helperStatusAfterRevoke = await helperPage.evaluate(async () => {
+      const res = await fetch('/api/helper/session', { method: 'GET' });
+      return res.status;
+    });
+    expect(helperStatusAfterRevoke).toBe(410);
+
+    // Assert confirmed deletion produces no recovery credential cookie in normal flow
+    const wearerCookies = await wearerContext.cookies();
+    const recoveryCookie = wearerCookies.find((c) => c.name === 'wearerkey_purge_recovery');
+    expect(recoveryCookie).toBeUndefined();
+
+    // Assert helper DOM strictly never receives wearer source or result images
+    expect(await helperPage.locator('img[src*="/source"]').count()).toBe(0);
+    expect(await helperPage.locator('img[src*="/result"]').count()).toBe(0);
+
+    // 9. Run Axe Accessibility Scan on Revoked States for both Wearer and Helper
     const wearerAxe = await new AxeBuilder({ page: wearerPage })
       .withTags(['wcag2a', 'wcag2aa'])
       .analyze();
     expect(wearerAxe.violations).toEqual([]);
+
+    const helperAxe = await new AxeBuilder({ page: helperPage })
+      .withTags(['wcag2a', 'wcag2aa'])
+      .analyze();
+    expect(helperAxe.violations).toEqual([]);
 
     await wearerContext.close();
     await helperContext.close();
