@@ -1,12 +1,10 @@
-# Devpost Submission — WearerKey
+# WearerKey — Devpost Submission Package
 
-## Project Details
+## Project Title
+**WearerKey — Private Collaborative Virtual Try-On**
 
-- **Title:** WearerKey — Private Collaborative Virtual Try-On
-- **Tagline:** Shop together without sharing the wearer's photo.
-- **Hackathon:** Perfect Corp AI Hackathon 2026 (Skin AI & eCommerce VTO)
-- **Repository:** `https://github.com/abhijeetnardele24-hash/youcam-wearerkey`
-- **Built with:** YouCam AI Clothes V4, Fastify, TypeScript, React 18, Vite, TailwindCSS, Sharp, PGlite, Zod, Vitest, Playwright.
+## Tagline
+*Shop together without sharing the wearer's photo: privacy-first collaborative fashion try-on powered by Perfect Corp's YouCam AI Clothes V4.*
 
 ---
 
@@ -14,7 +12,7 @@
 
 Collaborative shopping is one of the most natural social interactions in fashion: we text friends, ask our partners, or hire stylists to help us choose what to buy. But today's virtual try-on (VTO) tools force an uncomfortable all-or-nothing choice: **to see if an outfit works on you, you must share your unedited body photo or screenshots of yourself with other people.**
 
-For millions of people, this is a privacy deal-breaker. Whether due to body vulnerability, personal boundaries, religious practices, or workplace privacy, people don't want their full-body reference photos circulating across messaging apps or stored indefinitely on third-party servers.
+For many shoppers—particularly women, people with body sensitivity, those practicing religious modesty, or anyone who values personal digital dignity—uploading full-body selfies into chat threads or sharing them with companions is unacceptable.
 
 We asked: **What if shopping companions could curate outfits and request virtual try-ons without ever seeing the wearer's photo?**
 
@@ -26,10 +24,10 @@ We asked: **What if shopping companions could curate outfits and request virtual
 
 1. **Private Wearer Setup:** The wearer sets an immutable **Consent Seal** (approved garment categories like tops, outerwear, or dresses; maximum candidate cap; expiration duration) and privately uploads their reference photo.
 2. **Role-Separated Helper Workspace:** The wearer shares a single-use **Helper Link**. The helper can search online stores, upload garment product photos, and request virtual try-ons—but the helper's interface **strictly never displays the wearer's photo or try-on render**.
-3. **Server-Enforced YouCam Orchestration:** When a try-on is requested, WearerKey validates the proposal against the Consent Gate, sanitizes EXIF data in memory with Sharp, and dispatches an asynchronous task to YouCam's official Clothes V4 API (`/s2s/v2.0/task/cloth-v4`).
+3. **Server-Enforced YouCam Orchestration:** When a try-on is requested, WearerKey validates the proposal against the Consent Gate, sanitizes EXIF/GPS metadata server-side in memory with Sharp before provider transmission, and dispatches an asynchronous task to YouCam's official Clothes V4 API (`/s2s/v2.0/task/cloth-v4`).
 4. **Private Fitting Mirror:** The resulting try-on render streams directly into the **Wearer's Private Mirror only**, watermarked with responsible AI disclaimers.
 5. **Decisive Feedback Slips:** The wearer casts a standardized verdict (**Approve / Maybe / Pass**) and writes a safe note (e.g., *"Love the drape, ordering medium"*). The helper receives only this feedback signal.
-6. **Cryptographic Deletion Receipts:** Once the session is completed or revoked, WearerKey executes immediate deletion requests against remote provider tasks and files, producing an HMAC-SHA256 signed audit receipt v2.0 proving data purge.
+6. **Cryptographic Deletion Receipts:** Once the session is completed or revoked, WearerKey executes immediate deletion requests against remote provider tasks and files (`POST /s2s/v2.0/task/delete`, `DELETE /s2s/v2.0/file/{fileId}`), producing an HMAC-SHA256 signed audit receipt v2.0 proving application ledger authenticity based on recorded provider responses.
 
 ---
 
@@ -37,7 +35,7 @@ We asked: **What if shopping companions could curate outfits and request virtual
 
 - **Monorepo Architecture:** Clean TypeScript monorepo with `packages/contracts` (Zod schemas & DTOs), `packages/domain` (cryptographic token hashing, state machines, consent gate), `apps/api` (Fastify S2S API & Sharp in-memory sanitizer), and `apps/web` (React 18 + Vite SPA).
 - **Zero-Leakage Security Model:** Helper endpoints (`/api/helper/*`) completely omit wearer photos and try-on stream URLs from their data transfer objects. Tokens are hashed with SHA-256 and compared in constant time with `crypto.timingSafeEqual`.
-- **YouCam Clothes V4 Integration:** Full asynchronous task orchestration implementing File API upload, category mapping (`upper_body`, `lower_body`, `full_body`, `outer`, `shoes`, `auto`), status polling, and remote file deletion.
+- **YouCam Clothes V4 Integration:** Full asynchronous task orchestration implementing File API upload, category mapping (`upper_body`, `lower_body`, `full_body`, `outer`, `shoes`, `auto`), status polling, and official task deletion (`POST /s2s/v2.0/task/delete`).
 - **Thoughtful Fitting-Room Visual Design:** Built with a custom palette inspired by warm parchment (`#F5F0E7`), deep bottle green (`#1F624F`), and muted aubergine (`#70465E`), featuring the **VisibilityRail**, **ConsentSeal**, and **PrivateMirror**.
 
 ---
@@ -45,7 +43,7 @@ We asked: **What if shopping companions could curate outfits and request virtual
 ## Challenges We Overcame
 
 1. **Strict Server-Enforced Privacy Boundary:** Ensuring that no combination of client-side inspection, DevTools network sniffing, or API parameter manipulation could ever reveal the wearer's photo to the helper required strict server-enforced route authorization and distinct DTO boundaries.
-2. **Ephemeral Provider Lifecycle:** Ensuring reference images do not persist on provider storage by coupling task completion with automated file deletion requests.
+2. **Ephemeral Provider Lifecycle:** Ensuring reference images do not persist on provider storage by coupling task completion with automated deletion requests against both tasks and image files.
 3. **Truthfulness and Fail-Closed Engineering:** Designing clear distinctions between live YouCam execution, recorded live replays, and offline fixtures so the system never makes unverified claims.
 
 ---
@@ -55,6 +53,14 @@ We asked: **What if shopping companions could curate outfits and request virtual
 - **30-Second Judge Tour:** Evaluators can visit `/judge` and launch a pre-seeded, side-by-side interactive split screen that demonstrates the cryptographic boundary live in 30 seconds.
 - **80 Automated Tests Passing (70 Vitest + 10 Playwright/Axe across Desktop & Mobile):** Thorough verification of cryptographic domain primitives, consent gates, YouCam Clothes V4 contract mocks, state transitions, end-to-end two-role API integration, full e2e browser journey, and WCAG 2.1 AA accessibility (0 Axe violations in tested states).
 - **Single-Container Unified Delivery:** Fastify serves both the secure API and the production-built React frontend with zero external runtime dependencies.
+
+---
+
+## Disclaimers & Responsible AI
+
+- **Visual Appearance Preview Only:** Virtual try-on provides an aesthetic coordination and appearance simulation using YouCam AI Clothes V4; it is not a certified sizing, tailoring, stretch, or physical fabric guarantee.
+- **Deletion Audit Ledger:** The HMAC-SHA256 signature guarantees application ledger authenticity. Deletion confirmation indicates recorded HTTP responses from YouCam S2S deletion endpoints (`POST /s2s/v2.0/task/delete` and `DELETE /s2s/v2.0/file/{fileId}`).
+- **Accessibility:** 0 Axe-core violations verified across tested views (Home, Create, Judge Tour, Wearer Room, Helper Room).
 
 ---
 

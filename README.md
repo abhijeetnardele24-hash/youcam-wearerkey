@@ -30,10 +30,11 @@ For millions of people, this is a privacy barrier due to body sensitivity, perso
 
 ### Trust Boundaries & Safeguards
 - **Zero Photo Leakage:** Helper route handlers (`/api/helper/*`) completely omit wearer photos and try-on stream URLs from all response DTOs.
-- **In-Memory Sanitization:** Before sending images to YouCam's File API, GPS coordinates, device tags, and camera metadata are stripped in memory via Sharp.
+- **Server-Side In-Memory Sanitization:** EXIF/GPS sanitization occurs server-side in memory before provider transmission. Before sending images to YouCam's File API, GPS coordinates, device tags, and camera metadata are stripped in memory via Sharp.
 - **Capability Tokens:** Role authorization is governed by cryptographically random 32-byte capability tokens stored solely as SHA-256 hashes and compared in constant time (`crypto.timingSafeEqual`).
 - **Encrypted Provider Identifiers:** Remote task IDs and ephemeral provider URLs are encrypted at rest using AES-256-GCM.
-- **Provider Deletion Lifecycle:** WearerKey issues explicit deletion requests (`DELETE /s2s/v2.0/file/{fileId}` and `POST /s2s/v2.0/task/delete`) upon session completion or revocation, producing a signed HMAC audit receipt.
+- **Provider Deletion Lifecycle:** WearerKey issues explicit deletion requests (`DELETE /s2s/v2.0/file/{fileId}` and `POST /s2s/v2.0/task/delete`) upon session completion or revocation, producing an HMAC-SHA256 signed audit receipt v2.0. The HMAC signature proves the authenticity and integrity of the application-issued receipt ledger; deletion confirmation reflects the recorded responses from the provider API.
+- **Accessibility:** 0 Axe-core violations across tested states and viewports (Home, Create, Judge Tour, Wearer Room, Helper Room).
 
 ---
 

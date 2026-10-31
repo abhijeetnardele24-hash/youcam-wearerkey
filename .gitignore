@@ -1,11 +1,19 @@
 # Environment and secrets
 .env
 .env.*
+.env.live.local
 !.env.example
 *.pem
 *.key
 *.token
 credentials.json
+
+# Private live testing fixtures & uncommitted submission media
+private-fixtures/
+*.private.jpg
+*.private.png
+*.private.jpeg
+submission-assets/
 
 # Dependencies
 node_modules/
