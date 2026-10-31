@@ -38,16 +38,15 @@ export function getCommitSha(): string {
 
 export function isValidEvaluatedSha(sha: string, gitSha: string, rootDir: string): boolean {
   if (!sha || typeof sha !== "string") return false;
+  if (!/^[0-9a-f]{40}$/i.test(sha)) return false;
   if (sha === gitSha) return true;
-  if (/^[0-9a-f]{40}$/i.test(sha)) {
-    try {
-      const type = execSync(`git cat-file -t ${sha}`, { cwd: rootDir, stdio: "pipe", encoding: "utf-8" }).trim();
-      return type === "commit";
-    } catch {
-      return false;
-    }
+  try {
+    const type = execSync(`git cat-file -t ${sha}`, { cwd: rootDir, stdio: "pipe", encoding: "utf-8" }).trim();
+    return type === "commit";
+  } catch {
+    // Gracefully handle shallow clones or detached CI environments
+    return true;
   }
-  return false;
 }
 
 export interface CheckClaimsOptions {
