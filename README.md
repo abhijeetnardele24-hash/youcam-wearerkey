@@ -29,7 +29,7 @@ For millions of people, this is a privacy barrier due to body sensitivity, perso
 ![WearerKey Architecture](docs/assets/architecture-diagram.svg)
 
 ### Trust Boundaries & Safeguards
-- **Zero Photo Leakage:** Helper route handlers (`/api/helper/*`) completely omit wearer photos and try-on stream URLs from all response DTOs.
+- **Server-Enforced Role Separation:** Tested helper routes expose no wearer or result image bytes; helper route handlers (`/api/helper/*`) completely omit wearer photos and try-on stream URLs from all response DTOs.
 - **Server-Side In-Memory Sanitization:** EXIF/GPS sanitization occurs server-side in memory before provider transmission. Before sending images to YouCam's File API, GPS coordinates, device tags, and camera metadata are stripped in memory via Sharp.
 - **Capability Tokens:** Role authorization is governed by cryptographically random 32-byte capability tokens stored solely as SHA-256 hashes and compared in constant time (`crypto.timingSafeEqual`).
 - **Encrypted Provider Identifiers:** Remote task IDs and ephemeral provider URLs are encrypted at rest using AES-256-GCM.
@@ -38,7 +38,23 @@ For millions of people, this is a privacy barrier due to body sensitivity, perso
 
 ---
 
-## 3. 30-Second Judge Tour
+## 3. Potential Impact & User Model
+
+### Target User Segments
+- **Privacy-Conscious Shoppers:** Everyday fashion consumers who want shopping advice from friends without uploading vulnerable body selfies to unencrypted messaging threads.
+- **Shoppers with Body-Image Sensitivity:** Consumers who experience anxiety around physical appearance and body scrutiny during collaborative shopping.
+- **Modest-Fashion Customers:** Communities with cultural, ethical, or religious privacy norms regarding bodily modesty.
+- **Remote Personal Stylists:** Professional fashion advisors and clienteling teams seeking a privacy-preserving protocol to style clients without taking custody of private client photographs.
+- **Friends & Family Assisting Purchases:** Gift-givers, partners, and family members collaborating on wardrobe curation.
+
+### Retail Value Hypothesis
+- **Reduced Abandonment:** Lowers drop-off at the consideration stage when shoppers desire feedback but resist sharing raw body photos.
+- **Higher Collaborative Confidence:** Facilitates decisive purchases through private feedback loops (Approve / Maybe / Pass) without friction.
+- **Fewer Uncontrolled Copies:** Prevents raw personal photographs from leaking into group chats, phone camera rolls, and third-party cloud photo caches.
+
+---
+
+## 4. 30-Second Judge Tour
 
 We built an interactive, pre-seeded evaluation suite that allows hackathon judges to test both roles side-by-side in under 30 seconds with 1 click:
 

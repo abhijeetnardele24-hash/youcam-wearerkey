@@ -5,12 +5,12 @@ export const BoundaryDiagram: React.FC = () => {
   return (
     <div className="parcel-card p-6 bg-parchment-50 border border-stone">
       <div className="text-center max-w-xl mx-auto mb-6">
-        <span className="seal-badge seal-wearer mb-2">Architectural Guarantee</span>
+        <span className="seal-badge seal-wearer mb-2">Architectural Boundary</span>
         <h3 className="font-serif text-xl font-bold text-ink">
           The WearerKey Role-Separated Shopping Boundary
         </h3>
         <p className="text-xs text-ink-muted mt-1">
-          How WearerKey orchestrates YouCam AI Clothes V4 with capability-isolated access, guaranteeing that the helper never receives the wearer's photo or raw VTO render.
+          How WearerKey orchestrates YouCam AI Clothes V4 with capability-isolated access, ensuring that the helper never receives the wearer's photo or raw VTO render.
         </p>
       </div>
 

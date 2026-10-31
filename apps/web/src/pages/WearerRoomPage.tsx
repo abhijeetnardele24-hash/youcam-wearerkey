@@ -343,7 +343,7 @@ export const WearerRoomPage: React.FC = () => {
               <span>Invite Shopping Companion</span>
             </div>
             <span className="text-[11px] font-semibold text-wearer bg-wearer-light px-2 py-0.5 rounded">
-              Zero Photo Leakage
+              Server-Enforced Separation
             </span>
           </div>
 
@@ -515,9 +515,9 @@ export const WearerRoomPage: React.FC = () => {
             </p>
 
             <div className="p-3 bg-stone-light/40 rounded text-[11px] text-ink-muted space-y-1">
-              <p className="font-semibold text-ink">Cryptographic Guarantee:</p>
+              <p className="font-semibold text-ink">Tamper-Evident Ledger Integrity:</p>
               <p>• Helper link becomes invalid immediately (HTTP 410).</p>
-              <p>• You will receive an HMAC-SHA256 signed audit receipt proving data purge.</p>
+              <p>• You will receive an HMAC-SHA256 signed audit receipt recording provider deletion responses.</p>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">

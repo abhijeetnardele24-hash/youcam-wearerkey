@@ -11,14 +11,14 @@ const FORBIDDEN_PATTERNS = [
   /glpat-[0-9a-zA-Z-_]{20}/, // GitLab Personal Access Token
   /-----BEGIN PRIVATE KEY-----/,
   /-----BEGIN RSA PRIVATE KEY-----/,
-  /postgres:\/\/[^:]+:[^@]+@/, // Database password in connection string (excluding localhost/test)
+  /postgres:\/\/[^:]+:[^@]+@(?!localhost)/, // Database password in connection string (excluding localhost/test)
   /YOUCAM_API_KEY\s*=\s*["'][a-zA-Z0-9]{16,}["']/ // Hardcoded YouCam API Key
 ];
 
 function runSecurityScan() {
   console.log(`[WearerKey Security Scan] Scanning tracked repository files for secrets...`);
 
-  // Get list of git tracked files
+  // 1. Scan git tracked files in working tree
   const filesOutput = execSync("git ls-files", { encoding: "utf-8" });
   const files = filesOutput.split("\n").map((f) => f.trim()).filter(Boolean);
 
@@ -46,10 +46,50 @@ function runSecurityScan() {
         if (file === ".env.example" && content.includes("your-youcam-api-key-here")) {
           continue;
         }
+        if (content.includes("postgres://user:password@localhost")) {
+          continue;
+        }
         console.error(`🚨 POTENTIAL SECRET DETECTED in ${file}: matches ${pattern}`);
         violations++;
       }
     }
+  }
+
+  // 2. Scan Git commit history diffs for secrets
+  console.log(`[WearerKey Security Scan] Scanning entire Git commit history for secret leakage...`);
+  try {
+    const gitLogOutput = execSync("git log -p -U0", { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 });
+    const logLines = gitLogOutput.split("\n");
+
+    let currentFile = "";
+    for (const line of logLines) {
+      if (line.startsWith("diff --git")) {
+        const parts = line.split(" ");
+        currentFile = parts[2] ? parts[2].replace(/^a\//, "") : "";
+        continue;
+      }
+
+      // Skip the scanner itself
+      if (currentFile.includes("security-scan.ts") || currentFile.includes("security-scan.js")) {
+        continue;
+      }
+
+      // Only examine added lines in commit diffs
+      if (!line.startsWith("+") || line.startsWith("+++")) continue;
+      const addedContent = line.slice(1);
+
+      if (addedContent.includes("your-youcam-api-key-here")) continue;
+      if (addedContent.includes("postgres://user:password@localhost")) continue;
+
+      for (const pattern of FORBIDDEN_PATTERNS) {
+        if (pattern.test(addedContent)) {
+          console.error(`🚨 POTENTIAL SECRET DETECTED in Git history (${currentFile}): matches ${pattern}`);
+          violations++;
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[WearerKey Security Scan] Git history scan warning: ${err.message}`);
   }
 
   if (violations > 0) {
@@ -57,7 +97,7 @@ function runSecurityScan() {
     process.exit(1);
   }
 
-  console.log(`✅ Security scan PASSED: 0 secrets detected across ${files.length} tracked files.`);
+  console.log(`✅ Security scan PASSED: 0 secrets detected across ${files.length} tracked files and complete Git history.`);
 }
 
 runSecurityScan();

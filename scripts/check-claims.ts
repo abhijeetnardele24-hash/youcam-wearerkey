@@ -7,7 +7,12 @@ export const FORBIDDEN_STRINGS = [
   "100% bug free",
   "guaranteed fit",
   "zero-knowledge",
-  "zero knowledge"
+  "zero knowledge",
+  "zero leakage",
+  "zero-leakage",
+  "ironclad",
+  "guarantees provider deletion",
+  "cryptographic proof of deletion"
 ];
 
 export const REQUIRED_DOCS = [

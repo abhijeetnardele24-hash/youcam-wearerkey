@@ -1,36 +1,30 @@
 {
   "deployment_status": "LOCAL_VERIFIED_PENDING_EXTERNAL_CLOUD_HOSTING",
-  "evaluated_commit_sha": "17bab559b8f873a1a2c901c63c208df3d614bb54",
-  "timestamp": "2026-10-31T05:10:00.000Z",
-  "port_configuration": {
-    "local_development": {
-      "web_frontend_url": "http://localhost:3000",
-      "api_backend_url": "http://localhost:4000",
-      "description": "Vite dev server running on port 3000 proxying /api requests to Fastify backend on port 4000"
-    },
-    "production_unified_server": {
-      "url": "http://localhost:3000",
-      "port": 3000,
-      "description": "Fastify unified server serving compiled React SPA and REST API endpoints simultaneously from single port"
-    }
+  "target_url": "http://127.0.0.1:4000",
+  "evaluated_commit_sha": "db727dbbe067db7a3d9bb094f2cf18b4558de816",
+  "deployed_commit_sha": "db727dbbe067db7a3d9bb094f2cf18b4558de816",
+  "commit_matched": true,
+  "timestamp": "2026-10-31T15:02:48.649Z",
+  "latency_ms": 1840,
+  "checks": {
+    "frontend_home": true,
+    "judge_tour": true,
+    "health_endpoint": true,
+    "meta_endpoint": true,
+    "judge_seed_flow": true,
+    "privacy_boundary_verified": true,
+    "receipt_hmac_verified": true
   },
-  "verified_routes": [
+  "provider_mode": "DEMO_FIXTURE",
+  "routes_verified": [
     "GET /",
-    "GET /create",
     "GET /judge",
-    "GET /wearer",
-    "GET /helper",
-    "GET /receipt",
-    "GET /about",
     "GET /api/health",
     "GET /api/meta",
-    "POST /api/sessions",
+    "POST /api/judge/seed",
     "POST /api/auth/bootstrap",
-    "POST /api/receipts/verify",
-    "GET /api/events"
+    "GET /api/helper/session",
+    "POST /api/receipts/verify"
   ],
-  "docker_container_ready": true,
-  "external_cloud_deployment_required": true,
-  "notes": "To produce a live public HTTPS deployment URL, deploy the Dockerfile or repository to a public hosting provider (Render, Railway, Fly.io, or Vercel) and record the resulting URL.",
   "evidence_authority": "LOCAL_DOCUMENTATION_SNAPSHOT"
 }

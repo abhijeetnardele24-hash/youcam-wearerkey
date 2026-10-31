@@ -54,24 +54,52 @@ export interface FixtureProvenanceRecord {
   manifest_verified: boolean;
 }
 
+export interface ImageValidationRecord {
+  verified: boolean;
+  format?: "png" | "jpeg";
+  width?: number;
+  height?: number;
+  byte_size?: number;
+  content_type?: string;
+  error?: string;
+}
+
 export interface SmokeReceipt {
   evaluated_commit_sha: string;
+  evidence_authority?: "LOCAL_DOCUMENTATION_SNAPSHOT" | "AUTHORITATIVE_CI_RUN";
   provider_mode: "LIVE_YOUCAM" | "DEMO_FIXTURE" | "RECORDED_LIVE_RESULT";
   endpoint: string;
   timestamp: string;
-  connectivity_status: "CONNECTED" | "BLOCKED_MISSING_KEY" | "AUTH_FAILED" | "FIXTURE_REJECTED" | "OFFLINE" | "TIMEOUT";
+  connectivity_status:
+    | "CONNECTED"
+    | "BLOCKED_MISSING_KEY"
+    | "AUTH_FAILED"
+    | "RATE_LIMITED"
+    | "VALIDATION_FAILED"
+    | "SERVER_ERROR"
+    | "TIMEOUT"
+    | "NETWORK_ERROR"
+    | "TASK_UNSUCCESSFUL"
+    | "IMAGE_VALIDATION_FAILED"
+    | "DELETION_FAILED"
+    | "FIXTURE_REJECTED"
+    | "OFFLINE";
   http_status: number;
   live_execution_verified: boolean;
   generation_verified: boolean;
+  image_verified: boolean;
   deletion_verified: boolean;
   model_name: string;
   api_family: string;
   latency_ms?: number;
   task_id_hash?: string;
+  image_validation?: ImageValidationRecord;
   deletion_breakdown?: DeletionVerificationRecord;
   fixture_provenance?: FixtureProvenanceRecord;
+  privacy_notice?: string;
   reason?: string;
   error?: string;
+  custom_mock_verified?: boolean;
 }
 
 export function getCommitSha(): string {
@@ -201,6 +229,7 @@ export interface SmokeOptions {
   commitSha?: string;
   customProvider?: YouCamClothesProvider;
   docsDir?: string;
+  fetchImage?: (url: string) => Promise<{ status: number; contentType: string; buffer: Buffer }>;
 }
 
 export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt> {
@@ -226,6 +255,7 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
 
     const receipt: SmokeReceipt = {
       evaluated_commit_sha: commitSha,
+      evidence_authority: "LOCAL_DOCUMENTATION_SNAPSHOT",
       provider_mode: "DEMO_FIXTURE",
       endpoint: baseUrl,
       timestamp: new Date().toISOString(),
@@ -233,9 +263,11 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
       http_status: 0,
       live_execution_verified: false,
       generation_verified: false,
+      image_verified: false,
       deletion_verified: false,
       model_name: "YouCam AI Clothes V4",
       api_family: "AI_CLOTHES_V4",
+      privacy_notice: "Personal photographic hashes are salted or masked to prevent cross-dataset correlatability while preserving ledger integrity.",
       reason: "YOUCAM_API_KEY not configured. System operating in deterministic DEMO_FIXTURE / RECORDED_LIVE_RESULT mode without fabricating live execution."
     };
 
@@ -264,6 +296,7 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
 
     const receipt: SmokeReceipt = {
       evaluated_commit_sha: commitSha,
+      evidence_authority: "LOCAL_DOCUMENTATION_SNAPSHOT",
       provider_mode: "LIVE_YOUCAM",
       endpoint: baseUrl,
       timestamp: new Date().toISOString(),
@@ -271,9 +304,11 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
       http_status: 400,
       live_execution_verified: false,
       generation_verified: false,
+      image_verified: false,
       deletion_verified: false,
       model_name: "YouCam AI Clothes V4",
       api_family: "AI_CLOTHES_V4",
+      privacy_notice: "Personal photographic hashes are salted or masked to prevent cross-dataset correlatability while preserving ledger integrity.",
       reason: missingMsg,
       error: "Missing required LIVE_SMOKE_PERSON_FIXTURE or LIVE_SMOKE_GARMENT_FIXTURE"
     };
@@ -298,6 +333,7 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
 
     const receipt: SmokeReceipt = {
       evaluated_commit_sha: commitSha,
+      evidence_authority: "LOCAL_DOCUMENTATION_SNAPSHOT",
       provider_mode: "LIVE_YOUCAM",
       endpoint: baseUrl,
       timestamp: new Date().toISOString(),
@@ -305,9 +341,11 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
       http_status: 400,
       live_execution_verified: false,
       generation_verified: false,
+      image_verified: false,
       deletion_verified: false,
       model_name: "YouCam AI Clothes V4",
       api_family: "AI_CLOTHES_V4",
+      privacy_notice: "Personal photographic hashes are salted or masked to prevent cross-dataset correlatability while preserving ledger integrity.",
       reason: `Live execution rejected: photographic person and garment fixtures with matching .provenance.json required. ${errorDetail}`,
       error: errorDetail
     };
@@ -359,6 +397,8 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
   let uploadedGarmentFileId: string | null = null;
   let createdTaskId: string | null = null;
   let generationSucceeded = false;
+  let imageValidationVerified = false;
+  let imageValidationRecord: ImageValidationRecord | undefined;
   let latency = 0;
   let pollStatus: any = null;
   let caughtError: any = null;
@@ -399,6 +439,66 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
     console.log(`    Task terminal status: ${pollStatus.status} (${latency}ms)`);
 
     generationSucceeded = pollStatus.status === "SUCCEEDED" && !!pollStatus.resultUrl;
+
+    // 7. Validate returned image bytes
+    if (generationSucceeded && pollStatus.resultUrl) {
+      console.log(`  4b/5 Validating returned result image bytes...`);
+      try {
+        let imgStatus = 200;
+        let contentType = "image/png";
+        let imgBuffer: Buffer;
+
+        if (options.fetchImage) {
+          const fetchRes = await options.fetchImage(pollStatus.resultUrl);
+          imgStatus = fetchRes.status;
+          contentType = fetchRes.contentType;
+          imgBuffer = fetchRes.buffer;
+        } else {
+          const res = await fetch(pollStatus.resultUrl);
+          imgStatus = res.status;
+          contentType = res.headers.get("content-type") || "application/octet-stream";
+          imgBuffer = Buffer.from(await res.arrayBuffer());
+        }
+
+        if (imgStatus !== 200) {
+          throw new Error(`Result image fetch returned HTTP ${imgStatus}`);
+        }
+
+        if (!contentType.includes("image/")) {
+          throw new Error(`Unexpected result image MIME type: ${contentType}`);
+        }
+
+        if (imgBuffer.length < 1000) {
+          throw new Error(`Result image truncated or too small (${imgBuffer.length} bytes)`);
+        }
+
+        const parsedDims = parseImageDimensions(imgBuffer);
+        if (!parsedDims) {
+          throw new Error("Result image raster could not be decoded as PNG or JPEG");
+        }
+
+        if (parsedDims.width < 400 || parsedDims.height < 400) {
+          throw new Error(`Result image dimensions too small: ${parsedDims.width}x${parsedDims.height}`);
+        }
+
+        imageValidationRecord = {
+          verified: true,
+          format: parsedDims.format,
+          width: parsedDims.width,
+          height: parsedDims.height,
+          byte_size: imgBuffer.length,
+          content_type: contentType
+        };
+        imageValidationVerified = true;
+        console.log(`    Result image validated: ${parsedDims.format.toUpperCase()} ${parsedDims.width}x${parsedDims.height} (${imgBuffer.length} bytes)`);
+      } catch (imgErr: any) {
+        console.error(`    Result image validation failed: ${imgErr.message}`);
+        imageValidationRecord = {
+          verified: false,
+          error: imgErr.message
+        };
+      }
+    }
   } catch (err: any) {
     caughtError = err;
     console.error(`[WearerKey Live Smoke] Exception during execution: ${err.message}`);
@@ -443,27 +543,65 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
   let httpStatus = 200;
 
   if (caughtError) {
-    connectivityStatus = caughtError.message?.includes("timeout") ? "TIMEOUT" : "AUTH_FAILED";
-    httpStatus = 500;
+    const msg = (caughtError.message || "").toLowerCase();
+    if (msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid api key")) {
+      connectivityStatus = "AUTH_FAILED";
+      httpStatus = 401;
+    } else if (msg.includes("429") || msg.includes("rate limit")) {
+      connectivityStatus = "RATE_LIMITED";
+      httpStatus = 429;
+    } else if (msg.includes("400") || msg.includes("validation") || msg.includes("bad request")) {
+      connectivityStatus = "VALIDATION_FAILED";
+      httpStatus = 400;
+    } else if (msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("server error")) {
+      connectivityStatus = "SERVER_ERROR";
+      httpStatus = 500;
+    } else if (msg.includes("timeout")) {
+      connectivityStatus = "TIMEOUT";
+      httpStatus = 504;
+    } else if (msg.includes("econnrefused") || msg.includes("network error") || msg.includes("fetch failed")) {
+      connectivityStatus = "NETWORK_ERROR";
+      httpStatus = 503;
+    } else {
+      connectivityStatus = "SERVER_ERROR";
+      httpStatus = 500;
+    }
   } else if (!generationSucceeded) {
-    connectivityStatus = "AUTH_FAILED";
-    httpStatus = 400;
+    const statusStr = (pollStatus?.status || "").toUpperCase();
+    if (statusStr === "FAILED" || statusStr === "CANCELLED") {
+      connectivityStatus = "TASK_UNSUCCESSFUL";
+      httpStatus = 422;
+    } else {
+      connectivityStatus = "AUTH_FAILED";
+      httpStatus = 400;
+    }
+  } else if (!imageValidationVerified) {
+    connectivityStatus = "IMAGE_VALIDATION_FAILED";
+    httpStatus = 422;
+  } else if (!allDeletionsConfirmed) {
+    connectivityStatus = "DELETION_FAILED";
+    httpStatus = 207;
   }
+
+  const liveExecutionVerified = generationSucceeded && imageValidationVerified && allDeletionsConfirmed;
 
   const receipt: SmokeReceipt = {
     evaluated_commit_sha: commitSha,
+    evidence_authority: "LOCAL_DOCUMENTATION_SNAPSHOT",
     provider_mode: "LIVE_YOUCAM",
     endpoint: baseUrl,
     timestamp: new Date().toISOString(),
     connectivity_status: connectivityStatus,
     http_status: httpStatus,
-    live_execution_verified: generationSucceeded && allDeletionsConfirmed,
+    live_execution_verified: liveExecutionVerified,
     generation_verified: generationSucceeded,
+    image_verified: imageValidationVerified,
     deletion_verified: allDeletionsConfirmed,
     model_name: "YouCam AI Clothes V4",
     api_family: "AI_CLOTHES_V4",
     latency_ms: latency,
     task_id_hash: saltedTaskIdHash,
+    image_validation: imageValidationRecord,
     deletion_breakdown: {
       task_deletion: taskDelStatus,
       source_deletion: srcDelStatus,
@@ -471,9 +609,10 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
       all_deletions_confirmed: allDeletionsConfirmed
     },
     fixture_provenance: provenance,
-    reason: generationSucceeded && allDeletionsConfirmed
+    privacy_notice: "Personal photographic hashes are salted or masked to prevent cross-dataset correlatability while preserving ledger integrity.",
+    reason: liveExecutionVerified
       ? "Live YouCam Clothes V4 verified end-to-end with authentic photographic fixtures."
-      : (caughtError ? caughtError.message : `Provider status: ${pollStatus?.status || "FAILED"}`),
+      : (caughtError ? caughtError.message : (imageValidationRecord?.error || `Provider status: ${pollStatus?.status || "FAILED"}`)),
     ...(caughtError ? { error: caughtError.message } : {})
   };
 
@@ -483,8 +622,8 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeReceipt
   );
   console.log(`[WearerKey Live Smoke] Receipt recorded in docs/live-youcam-receipt.json`);
 
-  if (requireLive && (!generationSucceeded || !allDeletionsConfirmed) && !options.customProvider) {
-    console.error(`[WearerKey Live Smoke] FAIL-CLOSED: Generation or deletion unconfirmed.`);
+  if (requireLive && !liveExecutionVerified && !options.customProvider) {
+    console.error(`[WearerKey Live Smoke] FAIL-CLOSED: Generation, image verification, or deletion unconfirmed.`);
     process.exit(1);
   }
 

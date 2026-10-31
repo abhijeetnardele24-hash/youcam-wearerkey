@@ -13,7 +13,7 @@
 | Requirement | Description | Status | Evidence Location |
 | :--- | :--- | :---: | :--- |
 | **Monorepo Build** | Full TypeScript compilation across contracts, domain, api, and web | ✅ PASSED | `pnpm run build` exits 0 |
-| **Unit & Integration Tests** | 70 Vitest unit & API integration tests passing (5 suites) | ✅ PASSED | `tests/unit/*.test.ts`, `tests/integration/api.test.ts` |
+| **Unit & Integration Tests** | 80 Vitest unit & API integration tests passing (6 suites) | ✅ PASSED | `tests/unit/*.test.ts`, `tests/integration/api.test.ts` |
 | **E2E Browser Tests** | 10 Playwright browser tests across Desktop Chrome and Mobile (390px) | ✅ PASSED | `tests/e2e/e2e-journey.spec.ts` |
 | **Accessibility (WCAG 2.1 AA)** | Axe-core accessibility scan on Home, Create, and Judge pages with zero disabled rules | ✅ PASSED | 0 violations recorded |
 | **Security & Secrets** | Zero tracked secrets, API keys, or private tokens in git history | ✅ PASSED | `scripts/security-scan.ts` |

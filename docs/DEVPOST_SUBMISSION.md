@@ -34,9 +34,25 @@ We asked: **What if shopping companions could curate outfits and request virtual
 ## How We Built It
 
 - **Monorepo Architecture:** Clean TypeScript monorepo with `packages/contracts` (Zod schemas & DTOs), `packages/domain` (cryptographic token hashing, state machines, consent gate), `apps/api` (Fastify S2S API & Sharp in-memory sanitizer), and `apps/web` (React 18 + Vite SPA).
-- **Zero-Leakage Security Model:** Helper endpoints (`/api/helper/*`) completely omit wearer photos and try-on stream URLs from their data transfer objects. Tokens are hashed with SHA-256 and compared in constant time with `crypto.timingSafeEqual`.
+- **Server-Enforced Role Separation:** Tested helper routes expose no wearer or result image bytes; helper endpoints (`/api/helper/*`) completely omit wearer photos and try-on stream URLs from their data transfer objects. Tokens are hashed with SHA-256 and compared in constant time with `crypto.timingSafeEqual`.
 - **YouCam Clothes V4 Integration:** Full asynchronous task orchestration implementing File API upload, category mapping (`upper_body`, `lower_body`, `full_body`, `outer`, `shoes`, `auto`), status polling, and official task deletion (`POST /s2s/v2.0/task/delete`).
 - **Thoughtful Fitting-Room Visual Design:** Built with a custom palette inspired by warm parchment (`#F5F0E7`), deep bottle green (`#1F624F`), and muted aubergine (`#70465E`), featuring the **VisibilityRail**, **ConsentSeal**, and **PrivateMirror**.
+
+---
+
+## Potential Impact & Target Users
+
+### Who Benefits Most
+- **Privacy-Conscious Shoppers:** Everyday shoppers wanting fashion advice from friends without uploading vulnerable full-body selfies to unencrypted messaging apps.
+- **Shoppers with Body-Image Sensitivity:** Consumers experiencing anxiety around physical appearance and body scrutiny during collaborative shopping.
+- **Modest-Fashion Customers:** Communities with cultural, ethical, or religious privacy norms regarding bodily modesty.
+- **Remote Personal Stylists:** Professional fashion advisors and retail clienteling teams seeking a privacy-preserving protocol to style clients without taking custody of private client photographs.
+- **Friends & Family Assisting Purchases:** Gift-givers, partners, and family members collaborating on wardrobe curation.
+
+### Retail Value Hypothesis
+- **Reduced Abandonment:** Lowers drop-off at the consideration stage when shoppers desire feedback but resist sharing raw body photos.
+- **Higher Collaborative Confidence:** Facilitates decisive purchases through private feedback loops (Approve / Maybe / Pass) without friction.
+- **Fewer Uncontrolled Copies:** Prevents raw personal photographs from leaking into group chats, phone camera rolls, and third-party cloud photo caches.
 
 ---
 
@@ -51,7 +67,7 @@ We asked: **What if shopping companions could curate outfits and request virtual
 ## Accomplishments We're Proud Of
 
 - **30-Second Judge Tour:** Evaluators can visit `/judge` and launch a pre-seeded, side-by-side interactive split screen that demonstrates the cryptographic boundary live in 30 seconds.
-- **80 Automated Tests Passing (70 Vitest + 10 Playwright/Axe across Desktop & Mobile):** Thorough verification of cryptographic domain primitives, consent gates, YouCam Clothes V4 contract mocks, state transitions, end-to-end two-role API integration, full e2e browser journey, and WCAG 2.1 AA accessibility (0 Axe violations in tested states).
+- **90 Automated Tests Passing (80 Vitest + 10 Playwright/Axe across Desktop & Mobile):** Thorough verification of cryptographic domain primitives, consent gates, YouCam Clothes V4 contract mocks, state transitions, end-to-end two-role API integration, full e2e browser journey, and WCAG 2.1 AA accessibility (0 Axe violations in tested states).
 - **Single-Container Unified Delivery:** Fastify serves both the secure API and the production-built React frontend with zero external runtime dependencies.
 
 ---
@@ -59,7 +75,7 @@ We asked: **What if shopping companions could curate outfits and request virtual
 ## Disclaimers & Responsible AI
 
 - **Visual Appearance Preview Only:** Virtual try-on provides an aesthetic coordination and appearance simulation using YouCam AI Clothes V4; it is not a certified sizing, tailoring, stretch, or physical fabric guarantee.
-- **Deletion Audit Ledger:** The HMAC-SHA256 signature guarantees application ledger authenticity. Deletion confirmation indicates recorded HTTP responses from YouCam S2S deletion endpoints (`POST /s2s/v2.0/task/delete` and `DELETE /s2s/v2.0/file/{fileId}`).
+- **Deletion Audit Ledger:** The HMAC-SHA256 signature establishes application ledger authenticity. Deletion confirmation indicates recorded HTTP responses from YouCam S2S deletion endpoints (`POST /s2s/v2.0/task/delete` and `DELETE /s2s/v2.0/file/{fileId}`).
 - **Accessibility:** 0 Axe-core violations verified across tested views (Home, Create, Judge Tour, Wearer Room, Helper Room).
 
 ---

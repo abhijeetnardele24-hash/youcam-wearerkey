@@ -128,6 +128,7 @@ describe("Live YouCam Smoke Script & Fixture Provenance Tests", () => {
     expect(receipt.connectivity_status).toBe("BLOCKED_MISSING_KEY");
     expect(receipt.live_execution_verified).toBe(false);
     expect(receipt.generation_verified).toBe(false);
+    expect(receipt.image_verified).toBe(false);
     expect(receipt.deletion_verified).toBe(false);
     expect(receipt.evaluated_commit_sha).toBe("test_sha_123");
 
@@ -197,7 +198,6 @@ describe("Live YouCam Smoke Script & Fixture Provenance Tests", () => {
       commitSha: "commit_cleanup_sha"
     });
 
-    // Verify cleanup was invoked in finally block despite polling error
     expect(deleteTaskSpy).toHaveBeenCalledWith("task_smoke_failure_test");
     expect(deleteFileSpy).toHaveBeenCalledWith("file_source_999");
     expect(deleteFileSpy).toHaveBeenCalledWith("file_garment_999");
@@ -208,7 +208,7 @@ describe("Live YouCam Smoke Script & Fixture Provenance Tests", () => {
     expect(receipt.connectivity_status).toBe("TIMEOUT");
   });
 
-  it("runSmoke records successful live execution when generation and task deletion confirm", async () => {
+  it("runSmoke records successful live execution when generation, image validation, and task deletion confirm", async () => {
     const docsDir = path.join(tempDir, "docs");
 
     const personPhoto = path.join(tempDir, "user_person2.png");
@@ -268,17 +268,233 @@ describe("Live YouCam Smoke Script & Fixture Provenance Tests", () => {
       customProvider: mockProvider,
       docsDir,
       requireLive: false,
-      commitSha: "commit_success_sha"
+      commitSha: "commit_success_sha",
+      fetchImage: async () => ({
+        status: 200,
+        contentType: "image/png",
+        buffer: personBytes
+      })
     });
 
     expect(receipt.live_execution_verified).toBe(true);
     expect(receipt.generation_verified).toBe(true);
+    expect(receipt.image_verified).toBe(true);
     expect(receipt.deletion_verified).toBe(true);
     expect(receipt.connectivity_status).toBe("CONNECTED");
     expect(receipt.evaluated_commit_sha).toBe("commit_success_sha");
     expect(receipt.fixture_provenance?.manifest_verified).toBe(true);
     expect(receipt.fixture_provenance?.authority).toBe("USER_SUPPLIED_PROVENANCE_NOT_INDEPENDENTLY_VERIFIED");
     expect(receipt.fixture_provenance?.person_fixture_type).toBe("USER_PROVIDED_PHOTOGRAPH");
+    expect(receipt.image_validation?.verified).toBe(true);
+    expect(receipt.image_validation?.format).toBe("png");
+  });
+
+  it("regression: fails closed when result image fetch returns 404 or corrupted content", async () => {
+    const docsDir = path.join(tempDir, "docs");
+
+    const personPhoto = path.join(tempDir, "user_person3.png");
+    const personBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png"));
+    fs.writeFileSync(personPhoto, personBytes);
+    fs.writeFileSync(
+      `${personPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Camera",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(personBytes).digest("hex")
+      })
+    );
+
+    const garmentPhoto = path.join(tempDir, "user_garment3.png");
+    const garmentBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png"));
+    fs.writeFileSync(garmentPhoto, garmentBytes);
+    fs.writeFileSync(
+      `${garmentPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Garment",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(garmentBytes).digest("hex")
+      })
+    );
+
+    const mockProvider = new YouCamClothesProvider("https://fake.url", "valid_api_key_1234567890");
+    vi.spyOn(mockProvider, "uploadImage").mockImplementation(async (_, type) => ({
+      fileId: `file_${type}_imgfail`,
+      fileType: type as any,
+      downloadUrl: "https://fake.url/file"
+    }));
+    vi.spyOn(mockProvider, "createTask").mockResolvedValue({
+      taskId: "task_img_fail",
+      status: "RUNNING"
+    });
+    vi.spyOn(mockProvider, "pollTask").mockResolvedValue({
+      taskId: "task_img_fail",
+      status: "SUCCEEDED",
+      resultUrl: "https://yce-api-01.makeupar.com/results/not_found.jpg"
+    });
+    vi.spyOn(mockProvider, "deleteTask").mockResolvedValue({
+      taskId: "task_img_fail",
+      confirmed: true,
+      providerStatus: "DELETED",
+      deletionMode: "GENUINE_PROVIDER_CONFIRMED"
+    });
+    vi.spyOn(mockProvider, "deleteFile").mockResolvedValue(true);
+
+    const receipt = await runSmoke({
+      apiKey: "valid_api_key_1234567890",
+      baseUrl: "https://fake.url",
+      personFixturePath: personPhoto,
+      garmentFixturePath: garmentPhoto,
+      customProvider: mockProvider,
+      docsDir,
+      requireLive: false,
+      commitSha: "commit_img_fail",
+      fetchImage: async () => ({
+        status: 404,
+        contentType: "text/html",
+        buffer: Buffer.from("Not Found")
+      })
+    });
+
+    expect(receipt.live_execution_verified).toBe(false);
+    expect(receipt.generation_verified).toBe(true);
+    expect(receipt.image_verified).toBe(false);
+    expect(receipt.connectivity_status).toBe("IMAGE_VALIDATION_FAILED");
+    expect(receipt.image_validation?.verified).toBe(false);
+  });
+
+  it("regression: partial upload failure executes cleanup on previously uploaded source file", async () => {
+    const docsDir = path.join(tempDir, "docs");
+
+    const personPhoto = path.join(tempDir, "user_person4.png");
+    const personBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png"));
+    fs.writeFileSync(personPhoto, personBytes);
+    fs.writeFileSync(
+      `${personPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Camera",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(personBytes).digest("hex")
+      })
+    );
+
+    const garmentPhoto = path.join(tempDir, "user_garment4.png");
+    const garmentBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png"));
+    fs.writeFileSync(garmentPhoto, garmentBytes);
+    fs.writeFileSync(
+      `${garmentPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Garment",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(garmentBytes).digest("hex")
+      })
+    );
+
+    const mockProvider = new YouCamClothesProvider("https://fake.url", "valid_api_key_1234567890");
+    let uploadCallCount = 0;
+    vi.spyOn(mockProvider, "uploadImage").mockImplementation(async (_, type) => {
+      uploadCallCount++;
+      if (type === "source") {
+        return { fileId: "file_source_cleanup_test", fileType: "source", downloadUrl: "https://fake.url/file" };
+      }
+      throw new Error("429 Too Many Requests: Garment upload rate-limited");
+    });
+
+    const deleteFileSpy = vi.spyOn(mockProvider, "deleteFile").mockResolvedValue(true);
+
+    const receipt = await runSmoke({
+      apiKey: "valid_api_key_1234567890",
+      baseUrl: "https://fake.url",
+      personFixturePath: personPhoto,
+      garmentFixturePath: garmentPhoto,
+      customProvider: mockProvider,
+      docsDir,
+      requireLive: false,
+      commitSha: "commit_rate_limit"
+    });
+
+    expect(deleteFileSpy).toHaveBeenCalledWith("file_source_cleanup_test");
+    expect(uploadCallCount).toBe(2);
+    expect(receipt.live_execution_verified).toBe(false);
+    expect(receipt.connectivity_status).toBe("RATE_LIMITED");
+    expect(receipt.http_status).toBe(429);
+  });
+
+  it("regression: partial cleanup failure sets DELETION_FAILED connectivity status", async () => {
+    const docsDir = path.join(tempDir, "docs");
+
+    const personPhoto = path.join(tempDir, "user_person5.png");
+    const personBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_wearer_reference.png"));
+    fs.writeFileSync(personPhoto, personBytes);
+    fs.writeFileSync(
+      `${personPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Camera",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(personBytes).digest("hex")
+      })
+    );
+
+    const garmentPhoto = path.join(tempDir, "user_garment5.png");
+    const garmentBytes = fs.readFileSync(path.resolve(process.cwd(), "apps/api/public/sample_garment_overcoat.png"));
+    fs.writeFileSync(garmentPhoto, garmentBytes);
+    fs.writeFileSync(
+      `${garmentPhoto}.provenance.json`,
+      JSON.stringify({
+        fixture_type: "USER_PROVIDED_PHOTOGRAPH",
+        source: "User Garment",
+        license: "User Owned",
+        sha256: nodeCrypto.createHash("sha256").update(garmentBytes).digest("hex")
+      })
+    );
+
+    const mockProvider = new YouCamClothesProvider("https://fake.url", "valid_api_key_1234567890");
+    vi.spyOn(mockProvider, "uploadImage").mockImplementation(async (_, type) => ({
+      fileId: `file_${type}_partdel`,
+      fileType: type as any,
+      downloadUrl: "https://fake.url/file"
+    }));
+    vi.spyOn(mockProvider, "createTask").mockResolvedValue({
+      taskId: "task_partdel",
+      status: "RUNNING"
+    });
+    vi.spyOn(mockProvider, "pollTask").mockResolvedValue({
+      taskId: "task_partdel",
+      status: "SUCCEEDED",
+      resultUrl: "https://yce-api-01.makeupar.com/results/vto_partdel.jpg"
+    });
+    vi.spyOn(mockProvider, "deleteTask").mockResolvedValue({
+      taskId: "task_partdel",
+      confirmed: false,
+      providerStatus: "FAILED",
+      deletionMode: "NOT_LIVE_VERIFIED"
+    });
+    vi.spyOn(mockProvider, "deleteFile").mockResolvedValue(true);
+
+    const receipt = await runSmoke({
+      apiKey: "valid_api_key_1234567890",
+      baseUrl: "https://fake.url",
+      personFixturePath: personPhoto,
+      garmentFixturePath: garmentPhoto,
+      customProvider: mockProvider,
+      docsDir,
+      requireLive: false,
+      commitSha: "commit_partdel",
+      fetchImage: async () => ({
+        status: 200,
+        contentType: "image/png",
+        buffer: personBytes
+      })
+    });
+
+    expect(receipt.live_execution_verified).toBe(false);
+    expect(receipt.generation_verified).toBe(true);
+    expect(receipt.image_verified).toBe(true);
+    expect(receipt.deletion_verified).toBe(false);
+    expect(receipt.connectivity_status).toBe("DELETION_FAILED");
   });
 });
-

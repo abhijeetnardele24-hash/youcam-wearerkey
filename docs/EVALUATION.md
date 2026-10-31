@@ -15,13 +15,14 @@ Every claim in the WearerKey submission is backed by reproducible automated suit
 | :--- | :--- | :--- | :--- |
 | **Unit Testing (Domain & Crypto)** | `@wearerkey/domain` | 20 / 20 tests passed | ✅ PASSED |
 | **Provider Contract Testing** | `YouCamClothesProvider` | 18 / 18 tests passed | ✅ PASSED |
-| **End-to-End API Integration** | `@wearerkey/api` | 14 / 14 tests passed | ✅ PASSED |
-| **Smoke Script & Image Header Testing** | `live-youcam-smoke` | 10 / 10 tests passed | ✅ PASSED |
+| **End-to-End API Integration** | `@wearerkey/api` | 16 / 16 tests passed | ✅ PASSED |
+| **Smoke Script & Image Header Testing** | `live-youcam-smoke` | 13 / 13 tests passed | ✅ PASSED |
+| **Image Sanitizer & Dimension Bounds** | `image-sanitizer` | 5 / 5 tests passed | ✅ PASSED |
 | **Claims & Evidence Verification** | `check-claims` | 8 / 8 tests passed | ✅ PASSED |
-| **Total Automated Vitest Suite** | Vitest Runner (5 suites) | 70 / 70 tests passed | ✅ PASSED |
+| **Total Automated Vitest Suite** | Vitest Runner (6 suites) | 80 / 80 tests passed | ✅ PASSED |
 | **Browser E2E User Journeys** | Playwright (Desktop + Mobile) | 10 / 10 tests passed | ✅ PASSED |
 | **Accessibility (WCAG 2.1 AA)** | Axe-Core (Home, Create, Judge, Wearer, Helper) | 0 violations among tested views | ✅ PASSED |
-| **Security & Secrets Scan** | Git-tracked file scanner | 0 exposed secrets detected | ✅ PASSED |
+| **Security & Secrets Scan** | Working tree & complete Git history | 0 exposed secrets detected | ✅ PASSED |
 | **Documentation Honesty Audit** | Claims & Terminology auditor | 0 forbidden/hyperbolic phrases | ✅ PASSED |
 
 ---

@@ -89,7 +89,7 @@ Rather than relying on persistent user accounts, passwords, or shared room ident
    - Raw bytes are never written to unencrypted disk or permanent database tables.
 3. **HMAC-SHA256 Deletion Receipts:**
    - WearerKey produces an application-signed HMAC-SHA256 receipt upon session completion or revocation.
-   - The HMAC signature guarantees the authenticity and integrity of the application-issued receipt ledger.
+   - The HMAC signature verifies the authenticity and integrity of the application-issued receipt ledger.
    - Deletion statuses record genuine responses from YouCam's official APIs (`POST /s2s/v2.0/task/delete`, `DELETE /s2s/v2.0/file/{fileId}`).
 
 ---

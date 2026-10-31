@@ -4,7 +4,7 @@
 **Platform & Visibility:** Publicly visible on YouTube or Vimeo (Strictly Public — NOT Private, NOT Unlisted)  
 **Resolution:** 1080p 60fps  
 **Audio:** Clear voiceover with subtle background score  
-**Key Feature Demonstrated:** Collaborative shopping with zero wearer-photo leakage powered by YouCam AI Clothes V4.
+**Key Feature Demonstrated:** Collaborative shopping with server-enforced photo protection powered by YouCam AI Clothes V4.
 
 ---
 
@@ -38,7 +38,7 @@
 
 ---
 
-## Scene 3: The Helper Perspective & The Ironclad Boundary (0:50 - 1:20)
+## Scene 3: The Helper Perspective & Server-Enforced Boundary (0:50 - 1:20)
 
 ### Visuals
 - Split-screen or browser window switch to the **Helper Room** (`/helper`).

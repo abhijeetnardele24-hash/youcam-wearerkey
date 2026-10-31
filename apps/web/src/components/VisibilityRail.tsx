@@ -22,7 +22,7 @@ export const VisibilityRail: React.FC<VisibilityRailProps> = ({
             Cryptographic Visibility Rail
           </h3>
         </div>
-        <span className="text-[11px] text-ink-subtle">Zero Wearer-Image Leakage</span>
+        <span className="text-[11px] text-ink-subtle">Server-Enforced Separation</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-xs">

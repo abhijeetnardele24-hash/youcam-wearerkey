@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
 import { buildApp } from "../../apps/api/src/server.js";
 import { getDb } from "../../apps/api/src/db/index.js";
-import { relaySessions, proposals } from "../../apps/api/src/db/schema.js";
+import { relaySessions, proposals, providerTasks } from "../../apps/api/src/db/schema.js";
 import { encryptProviderIdentifier } from "@wearerkey/domain";
 
 function extractCookie(res: any, cookieName: string): string {
@@ -791,5 +791,113 @@ describe("WearerKey End-to-End API Integration", () => {
       headers: { cookie: wearerCookie },
     });
     expect([200, 302]).toContain(validResultRes.statusCode);
+
+    // Regression: inject malicious SSRF URL into database and verify HTTP 403 SSRF_BLOCKED
+    const db = await getDb();
+    const encKey = process.env.ENCRYPTION_KEY_HEX || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    await db.update(providerTasks)
+      .set({ resultUrlCiphertext: encryptProviderIdentifier("https://evil-unauthorized-server.com/malicious.png", encKey) })
+      .where(eq(providerTasks.proposalId, proposalId));
+
+    // Re-query: Wearer attempting to stream the unauthorized result domain is blocked
+    const ssrfBlockedRes = await app.inject({
+      method: "GET",
+      url: `/api/wearer/proposals/${proposalId}/result`,
+      headers: { cookie: wearerCookie },
+    });
+    expect(ssrfBlockedRes.statusCode).toBe(403);
+    expect(ssrfBlockedRes.json().error).toBe("SSRF_BLOCKED");
+  });
+
+  it("regression: helper proposal with unpermitted category is blocked by Consent Gate", async () => {
+    // 1. Create a session with ONLY "outer" permitted
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {
+        allowed_categories: ["outer"],
+        max_proposals: 2,
+        expires_in_hours: 1,
+      },
+    });
+    const { wearer_bootstrap_code } = createRes.json();
+
+    const wearerBoot = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { bootstrap_code: wearer_bootstrap_code, role: "wearer" },
+    });
+    const wearerCookie = extractCookie(wearerBoot, "wearerkey_session_wearer");
+
+    // Wearer mints helper link
+    const helperLinkRes = await app.inject({
+      method: "POST",
+      url: "/api/wearer/helper-link",
+      headers: { cookie: wearerCookie },
+    });
+    const { helper_bootstrap_code } = helperLinkRes.json();
+
+    const helperBoot = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { bootstrap_code: helper_bootstrap_code, role: "helper" },
+    });
+    const helperCookie = extractCookie(helperBoot, "wearerkey_session_helper");
+
+    // Helper submits proposal with category "shoes" which is NOT allowed by Consent Gate
+    const blockedProposalRes = await app.inject({
+      method: "POST",
+      url: "/api/helper/proposals",
+      headers: { cookie: helperCookie },
+      payload: {
+        label: "Italian Leather Boots",
+        garment_category: "shoes",
+        price_minor: 18000,
+        currency: "USD",
+        garment_data_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      }
+    });
+
+    // Expect HTTP 406 (Not Acceptable) rejection by Consent Gate
+    expect([400, 406]).toContain(blockedProposalRes.statusCode);
+    expect(blockedProposalRes.json().error).toMatch(/Not Acceptable|CATEGORY_NOT_ALLOWED|CONSENT_VIOLATION/);
+  });
+
+  it("regression: revoked session immediately terminates SSE connection with HTTP 410", async () => {
+    // Create session and bootstrap wearer
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {
+        allowed_categories: ["outer"],
+        max_proposals: 2,
+        expires_in_hours: 1,
+      },
+    });
+    const { wearer_bootstrap_code } = createRes.json();
+
+    const bootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { bootstrap_code: wearer_bootstrap_code, role: "wearer" },
+    });
+    const wearerCookie = extractCookie(bootRes, "wearerkey_session_wearer");
+
+    // Revoke session
+    const revokeRes = await app.inject({
+      method: "DELETE",
+      url: "/api/wearer/session",
+      headers: { cookie: wearerCookie },
+    });
+    expect(revokeRes.statusCode).toBe(200);
+
+    // Attempt to open SSE connection on revoked session
+    const sseRes = await app.inject({
+      method: "GET",
+      url: "/api/events",
+      headers: { cookie: wearerCookie },
+    });
+    expect(sseRes.statusCode).toBe(410);
+    expect(sseRes.json().error).toBe("SESSION_REVOKED");
   });
 });

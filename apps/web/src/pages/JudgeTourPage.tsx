@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../api';
+import type { MetaResponse } from '@wearerkey/contracts';
 import { Sparkles, ArrowRight, ShieldCheck, User, Users, CheckCircle2, ExternalLink } from 'lucide-react';
 
 export const JudgeTourPage: React.FC = () => {
@@ -11,6 +12,11 @@ export const JudgeTourPage: React.FC = () => {
   } | null>(null);
   const [activeTab, setActiveTab] = useState<'split' | 'wearer' | 'helper'>('split');
   const [error, setError] = useState<string | null>(null);
+  const [meta, setMeta] = useState<MetaResponse | null>(null);
+
+  useEffect(() => {
+    api.getMeta().then(setMeta).catch(() => {});
+  }, []);
 
   const handleLaunchTour = async () => {
     setIsSeeding(true);
@@ -147,6 +153,65 @@ export const JudgeTourPage: React.FC = () => {
               >
                 Reset Session
               </button>
+            </div>
+          </div>
+
+          {/* Judge Evidence & Boundary Inspection Panel */}
+          <div className="parcel-card p-4 bg-parchment-100 border border-stone/80 rounded-lg space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone/40 pb-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-wearer" />
+                <h4 className="font-serif font-bold text-xs sm:text-sm text-ink">
+                  Judge Evidence & Privacy Boundary Inspection Panel
+                </h4>
+              </div>
+              <span className="font-mono text-[10px] bg-white border border-stone px-2 py-0.5 rounded text-ink-muted self-start sm:self-auto">
+                Commit: {meta?.commit ? meta.commit.slice(0, 10) : 'Active Build'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
+              <div className="bg-white p-2.5 rounded border border-stone/60 space-y-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Provider Mode & API Family</div>
+                <div className="font-semibold text-ink flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>{seedData.mode}</span>
+                </div>
+                <div className="text-[11px] text-ink-subtle font-mono">YouCam Clothes V4 (s2s/v2.0)</div>
+              </div>
+
+              <div className="bg-white p-2.5 rounded border border-stone/60 space-y-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Consent Gate Policy</div>
+                <div className="font-semibold text-ink">Outerwear, Upper Body, Full Body</div>
+                <div className="text-[11px] text-ink-subtle">Cap: 3 proposals • Off-category blocked (406)</div>
+              </div>
+
+              <div className="bg-white p-2.5 rounded border border-stone/60 space-y-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Helper DTO Data Exposure</div>
+                <div className="font-semibold text-emerald-700 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>0 Image Bytes Exposed</span>
+                </div>
+                <div className="text-[11px] text-ink-subtle">Metadata only: label, category, decision, note</div>
+              </div>
+
+              <div className="bg-white p-2.5 rounded border border-stone/60 space-y-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Server-Side Sanitization</div>
+                <div className="font-semibold text-ink">In-Memory Sharp Pipeline</div>
+                <div className="text-[11px] text-ink-subtle">EXIF, GPS & Camera metadata stripped in RAM</div>
+              </div>
+
+              <div className="bg-white p-2.5 rounded border border-stone/60 space-y-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Remote Provider Cleanup</div>
+                <div className="font-semibold text-ink">Fail-Closed Deletions</div>
+                <div className="text-[11px] text-ink-subtle">POST /task/delete & DELETE /file/&#123;id&#125;</div>
+              </div>
+
+              <div className="bg-white p-2.5 rounded border border-stone/60 space-y-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Ledger Authenticity Proof</div>
+                <div className="font-semibold text-ink">HMAC-SHA256 Signed Receipt v2.0</div>
+                <div className="text-[11px] text-ink-subtle">Verifies application ledger integrity</div>
+              </div>
             </div>
           </div>
 

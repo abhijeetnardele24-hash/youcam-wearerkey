@@ -32,7 +32,7 @@ Once launched, you will see two synchronized viewports representing the two role
 
 ## 3. Verify the Network Privacy Boundary (DevTools)
 
-To verify the cryptographic guarantee for yourself:
+To verify the server-enforced boundary for yourself:
 1. Open your browser's Developer Tools (`F12` or `Ctrl+Shift+I`).
 2. Select the **Network** tab.
 3. In the Helper viewport, propose a new garment or refresh the helper workspace.
