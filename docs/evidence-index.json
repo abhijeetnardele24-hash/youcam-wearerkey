@@ -1,8 +1,8 @@
 {
   "project": "WearerKey",
-  "evaluated_commit_sha": "506c025db803fa85d2768dac82d706933ab3b044",
+  "evaluated_commit_sha": "dce769cdaba2c4361af48a1521dd90b02abc8790",
   "audit_verdict": "INTERNAL_COMPLETE_EXTERNAL_ACTION_REQUIRED",
-  "timestamp": "2026-11-02T09:00:00.000Z",
+  "timestamp": "2026-11-02T10:50:00.000Z",
   "engine": "YouCam AI Clothes V4",
   "evidence": {
     "monorepo_build": {
@@ -17,8 +17,8 @@
     "test_suites": {
       "vitest_unit_and_integration": {
         "status": "PASSED",
-        "total": 97,
-        "passed": 97,
+        "total": 110,
+        "passed": 110,
         "failed": 0,
         "files": [
           "tests/unit/domain.test.ts",
@@ -26,7 +26,8 @@
           "tests/unit/youcam-provider.test.ts",
           "tests/integration/api.test.ts",
           "tests/unit/live-youcam-smoke.test.ts",
-          "tests/unit/check-claims.test.ts"
+          "tests/unit/check-claims.test.ts",
+          "tests/unit/recorded-provenance.test.ts"
         ]
       },
       "playwright_browser_e2e": {

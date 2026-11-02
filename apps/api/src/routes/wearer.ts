@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { eq } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { SubmitDecisionRequestSchema } from "@wearerkey/contracts";
 import { decryptProviderIdentifier } from "@wearerkey/domain";
@@ -12,6 +13,11 @@ import { requireRole, requireReceiptAccessAuth } from "../middleware/auth.js";
 import { eventBus } from "../services/event-bus.js";
 import { ephemeralImageStore } from "../services/garment-store.js";
 import { request } from "undici";
+import {
+  verifyRecordedResultProvenance,
+  isPathInApprovedDirectory,
+  BUNDLED_SYNTHETIC_SAMPLE_SHA256
+} from "../providers/youcam/provenance.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -180,20 +186,118 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
 
       const encKey = config.PROVIDER_ID_ENCRYPTION_KEY || config.ENCRYPTION_KEY_HEX;
       const rawResultUrl = decryptProviderIdentifier(task.resultUrlCiphertext, encKey);
+
+      // If result URL is a remote HTTP(S) URL, it must ALWAYS undergo strict SSRF protection
+      const isRemoteUrl = rawResultUrl.startsWith("http://") || rawResultUrl.startsWith("https://");
       const fallbackPath = path.resolve(publicDir, "sample_vto_result.png");
 
-      // If it's a relative URL, local asset, or fake mock URL
-      if (
-        rawResultUrl.startsWith("/") ||
-        rawResultUrl.includes("fake.youcam.local") ||
-        rawResultUrl.includes("sample_vto_result")
-      ) {
-        if (fs.existsSync(fallbackPath)) {
+      if (!isRemoteUrl) {
+        // 1. Explicitly serve bundled fixture when mode is DEMO_FIXTURE
+        if (task.mode === "DEMO_FIXTURE") {
+          const fixturePath = path.resolve(publicDir, "sample_vto_result.png");
+          if (fs.existsSync(fixturePath)) {
+            reply.header("Content-Type", "image/png");
+            reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+            return reply.send(fs.readFileSync(fixturePath));
+          }
+          return reply.status(404).send({ error: "FIXTURE_NOT_FOUND", message: "Bundled demo fixture asset missing" });
+        }
+
+        // 2. Strictly serve verified recorded live result when mode is RECORDED_LIVE_RESULT
+        if (task.mode === "RECORDED_LIVE_RESULT") {
+          const repoRoot = fs.existsSync(path.resolve(__dirname, "../../../../package.json"))
+            ? path.resolve(__dirname, "../../../..")
+            : process.cwd();
+
+          const provenanceCheck = verifyRecordedResultProvenance({ rootDir: repoRoot });
+          if (!provenanceCheck.valid || !provenanceCheck.manifest || !provenanceCheck.resultFilePath) {
+            // Never fall back to synthetic fixture while retaining recorded-live mode
+            return reply.status(500).send({
+              error: "RECORDED_PROVENANCE_FAILED",
+              message: provenanceCheck.reason || "Recorded live result failed provenance validation."
+            });
+          }
+
+          // Constrain to approved server-owned directory & reject traversal/arbitrary paths
+          if (!isPathInApprovedDirectory(provenanceCheck.manifest.result_file, repoRoot)) {
+            return reply.status(403).send({
+              error: "ACCESS_DENIED",
+              message: "Result file is outside approved public directories or contains traversal."
+            });
+          }
+
+          const resolvedPath = path.resolve(repoRoot, provenanceCheck.manifest.result_file);
+          if (!fs.existsSync(resolvedPath)) {
+            return reply.status(404).send({
+              error: "RESULT_FILE_NOT_FOUND",
+              message: "Validated recorded result file not found on disk."
+            });
+          }
+
+          // Read bytes and verify SHA-256 again before returning bytes
+          const servedBytes = fs.readFileSync(resolvedPath);
+          const servedSha256 = crypto.createHash("sha256").update(servedBytes).digest("hex");
+
+          // Reject if matches bundled synthetic fixture
+          if (servedSha256.toLowerCase() === BUNDLED_SYNTHETIC_SAMPLE_SHA256.toLowerCase()) {
+            return reply.status(500).send({
+              error: "FORBIDDEN_SYNTHETIC_SAMPLE",
+              message: "Served bytes match bundled synthetic demo fixture; cannot serve as recorded live result."
+            });
+          }
+
+          // Ensure returned bytes match manifest
+          if (servedSha256.toLowerCase() !== provenanceCheck.manifest.result_image_sha256.toLowerCase()) {
+            return reply.status(500).send({
+              error: "SERVED_BYTE_MISMATCH",
+              message: `Served file hash (${servedSha256}) does not match manifest (${provenanceCheck.manifest.result_image_sha256}).`
+            });
+          }
+
+          // Ensure returned bytes match live receipt
+          const liveReceiptPath = path.isAbsolute(provenanceCheck.manifest.live_receipt_file)
+            ? provenanceCheck.manifest.live_receipt_file
+            : path.resolve(repoRoot, provenanceCheck.manifest.live_receipt_file);
+
+          if (!fs.existsSync(liveReceiptPath)) {
+            return reply.status(500).send({
+              error: "RECEIPT_NOT_FOUND",
+              message: "Referenced live receipt not found on disk."
+            });
+          }
+
+          let receipt: any;
+          try {
+            receipt = JSON.parse(fs.readFileSync(liveReceiptPath, "utf-8"));
+          } catch (err: any) {
+            return reply.status(500).send({
+              error: "MALFORMED_RECEIPT",
+              message: `Malformed JSON in live receipt: ${err.message}`
+            });
+          }
+
+          const receiptHash = receipt.result_image_sha256 || receipt.result_sha256 || receipt.image_hash;
+          if (!receiptHash || receiptHash.toLowerCase() !== servedSha256.toLowerCase()) {
+            return reply.status(500).send({
+              error: "RECEIPT_BYTE_MISMATCH",
+              message: `Served file hash (${servedSha256}) does not match receipt hash (${receiptHash}).`
+            });
+          }
+
           reply.header("Content-Type", "image/png");
           reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
-          return reply.send(fs.readFileSync(fallbackPath));
+          return reply.send(servedBytes);
         }
-        return reply.redirect(rawResultUrl.startsWith("/") ? rawResultUrl : "/assets/sample_vto_result.png");
+
+        // Local fallback for dev/mock URL testing
+        if (rawResultUrl.startsWith("/") || rawResultUrl.includes("fake.youcam.local")) {
+          if (fs.existsSync(fallbackPath)) {
+            reply.header("Content-Type", "image/png");
+            reply.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+            return reply.send(fs.readFileSync(fallbackPath));
+          }
+          return reply.redirect(rawResultUrl.startsWith("/") ? rawResultUrl : "/assets/sample_vto_result.png");
+        }
       }
 
       // SSRF Protection: Restrict remote fetch strictly to authorized YouCam CDN domains

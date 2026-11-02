@@ -243,6 +243,62 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     expect(await helperPage.locator('img[src*="/source"]').count()).toBe(0);
     expect(await helperPage.locator('img[src*="/result"]').count()).toBe(0);
 
+    // 8b. Verify mode-aware Audit Receipt on /receipt (Simulated mode vs Genuine mode)
+    const viewReceiptLink = wearerPage.getByRole('link', { name: /View Deletion Receipt/i });
+    await expect(viewReceiptLink).toBeVisible();
+    await viewReceiptLink.click();
+    await wearerPage.waitForURL(/\/receipt/);
+
+    // Verify Simulated fixture mode copy & styling
+    await expect(wearerPage.getByTestId('receipt-status-badge')).toBeVisible();
+    await expect(wearerPage.getByTestId('receipt-status-badge')).toHaveText(/SIMULATED/i);
+    await expect(wearerPage.getByTestId('simulated-receipt-note')).toBeVisible();
+    await expect(
+      wearerPage.getByText(
+        /Application-signed simulation ledger\. Local buffers and access were cleared in the fixture workflow; no live YouCam deletion confirmation is claimed\./i
+      )
+    ).toBeVisible();
+    expect(await wearerPage.getByText(/confirmation responses received from YouCam S2S deletion endpoints/i).count()).toBe(0);
+
+    // Verify Genuine provider-confirmed mode copy & styling via route override
+    await wearerPage.route('**/api/receipts**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          schema_version: '2.0',
+          receipt_version: 1,
+          is_final: true,
+          session_id: 'session-genuine-test-id',
+          status: 'REVOKED',
+          overall_deletion_status: 'CONFIRMED',
+          provider_tasks_total: 1,
+          provider_tasks_deleted: 1,
+          remote_files_total: 1,
+          remote_files_deleted: 1,
+          in_memory_buffers_purged: true,
+          local_access_revoked: true,
+          deletion_verification_mode: 'GENUINE_PROVIDER_CONFIRMED',
+          receipt_hmac: {
+            key_id: 'wearerkey-audit-key-v1',
+            signature: 'mock_sig',
+            signed_at: new Date().toISOString()
+          }
+        })
+      });
+    });
+
+    await wearerPage.reload();
+    await expect(wearerPage.getByTestId('receipt-status-badge')).toBeVisible();
+    await expect(wearerPage.getByTestId('receipt-status-badge')).toHaveText(/CONFIRMED/i);
+    await expect(wearerPage.getByTestId('genuine-receipt-note')).toBeVisible();
+    await expect(
+      wearerPage.getByText(/confirmation responses received from YouCam S2S deletion endpoints/i)
+    ).toBeVisible();
+    expect(await wearerPage.getByText(/no live YouCam deletion confirmation is claimed/i).count()).toBe(0);
+
+    await wearerPage.unroute('**/api/receipts**');
+
     // 9. Run Axe Accessibility Scan on Revoked States for both Wearer and Helper
     const wearerAxe = await new AxeBuilder({ page: wearerPage })
       .withTags(['wcag2a', 'wcag2aa'])

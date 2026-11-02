@@ -13,21 +13,39 @@ describe("Fail-Closed Claims & Evidence Integrity Auditor", () => {
     fs.mkdirSync(docsDir, { recursive: true });
 
     // Seed mock required docs
+    const currentSha = getCommitSha();
     for (const doc of REQUIRED_DOCS) {
       const fullPath = path.join(tempDir, doc);
-      if (doc.endsWith(".json")) {
+      if (doc === "docs/evidence-index.json") {
         fs.writeFileSync(
           fullPath,
           JSON.stringify({
-            evaluated_commit_sha: "test_sha_clean",
-            provider_mode: "DEMO_FIXTURE",
-            live_execution_verified: false,
+            project: "WearerKey",
+            evaluated_commit_sha: currentSha,
+            evidence_authority: "LOCAL_DOCUMENTATION_SNAPSHOT",
             evidence: {
               test_suites: {
-                vitest_unit_and_integration: { total: 10, passed: 10 },
-                playwright_browser_e2e: { total: 8, passed: 8 }
+                vitest_unit_and_integration: {
+                  total: 50,
+                  passed: 50,
+                  files: ["package.json"]
+                },
+                playwright_browser_e2e: {
+                  total: 10,
+                  passed: 10
+                }
               }
             }
+          })
+        );
+      } else if (doc.endsWith(".json")) {
+        fs.writeFileSync(
+          fullPath,
+          JSON.stringify({
+            evaluated_commit_sha: currentSha,
+            evidence_authority: "LOCAL_DOCUMENTATION_SNAPSHOT",
+            provider_mode: "DEMO_FIXTURE",
+            live_execution_verified: false
           })
         );
       } else {
@@ -202,8 +220,8 @@ describe("Fail-Closed Claims & Evidence Integrity Auditor", () => {
         evidence: {
           test_suites: {
             vitest_unit_and_integration: {
-              total: 80,
-              passed: 80,
+              total: 50,
+              passed: 50,
               files: ["package.json"]
             },
             playwright_browser_e2e: { total: 10, passed: 10 }
@@ -230,8 +248,8 @@ describe("Fail-Closed Claims & Evidence Integrity Auditor", () => {
         evidence: {
           test_suites: {
             vitest_unit_and_integration: {
-              total: 80,
-              passed: 80,
+              total: 50,
+              passed: 50,
               files: ["package.json"]
             },
             playwright_browser_e2e: { total: 10, passed: 10 }
@@ -329,8 +347,8 @@ describe("Fail-Closed Claims & Evidence Integrity Auditor", () => {
         evidence: {
           test_suites: {
             vitest_unit_and_integration: {
-              total: 80,
-              passed: 80,
+              total: 50,
+              passed: 50,
               files: ["package.json"]
             },
             playwright_browser_e2e: { total: 10, passed: 10 }
@@ -384,6 +402,106 @@ describe("Fail-Closed Claims & Evidence Integrity Auditor", () => {
     expect(isValidRepoRelativePath("   ")).toBe(false);
     expect(isValidRepoRelativePath(null)).toBe(false);
     expect(isValidRepoRelativePath(undefined)).toBe(false);
+  });
+
+  it("fails closed when claimed test files list ('files') is missing in evidence-index.json", () => {
+    const headSha = getCommitSha();
+    fs.writeFileSync(
+      path.join(tempDir, "docs/evidence-index.json"),
+      JSON.stringify({
+        project: "WearerKey",
+        evaluated_commit_sha: headSha,
+        evidence: {
+          test_suites: {
+            vitest_unit_and_integration: {
+              total: 50,
+              passed: 50
+              // files property omitted
+            },
+            playwright_browser_e2e: { total: 10, passed: 10 }
+          }
+        }
+      })
+    );
+
+    const res = runClaimsCheck({ cwd: tempDir, strictSha: false });
+    expect(res.passed).toBe(false);
+    expect(res.errors.some((e) => e.includes('Claimed test files list ("files") is missing'))).toBe(true);
+  });
+
+  it("fails closed when claimed test files list ('files') is empty in evidence-index.json", () => {
+    const headSha = getCommitSha();
+    fs.writeFileSync(
+      path.join(tempDir, "docs/evidence-index.json"),
+      JSON.stringify({
+        project: "WearerKey",
+        evaluated_commit_sha: headSha,
+        evidence: {
+          test_suites: {
+            vitest_unit_and_integration: {
+              total: 50,
+              passed: 50,
+              files: []
+            },
+            playwright_browser_e2e: { total: 10, passed: 10 }
+          }
+        }
+      })
+    );
+
+    const res = runClaimsCheck({ cwd: tempDir, strictSha: false });
+    expect(res.passed).toBe(false);
+    expect(res.errors.some((e) => e.includes('Claimed test files list ("files") is empty'))).toBe(true);
+  });
+
+  it("fails closed when Vitest test counts differ between evidence-index.json and vitest-results.json", () => {
+    const headSha = getCommitSha();
+    fs.writeFileSync(
+      path.join(tempDir, "docs/evidence-index.json"),
+      JSON.stringify({
+        project: "WearerKey",
+        evaluated_commit_sha: headSha,
+        evidence: {
+          test_suites: {
+            vitest_unit_and_integration: {
+              total: 99,
+              passed: 99,
+              files: ["package.json"]
+            },
+            playwright_browser_e2e: { total: 10, passed: 10 }
+          }
+        }
+      })
+    );
+
+    const res = runClaimsCheck({ cwd: tempDir, strictSha: false });
+    expect(res.passed).toBe(false);
+    expect(res.errors.some((e) => e.includes("Vitest count mismatch"))).toBe(true);
+  });
+
+  it("fails closed when Playwright test counts differ between evidence-index.json and playwright-results.json", () => {
+    const headSha = getCommitSha();
+    fs.writeFileSync(
+      path.join(tempDir, "docs/evidence-index.json"),
+      JSON.stringify({
+        project: "WearerKey",
+        evaluated_commit_sha: headSha,
+        evidence: {
+          test_suites: {
+            vitest_unit_and_integration: {
+              total: 50,
+              passed: 50,
+              files: ["package.json"]
+            },
+            playwright_browser_e2e: { total: 99, passed: 99 }
+          }
+        }
+      })
+    );
+
+    const res = runClaimsCheck({ cwd: tempDir, strictSha: false });
+    expect(res.passed).toBe(false);
+    expect(res.errors.some((e) => e.includes("Playwright count mismatch"))).toBe(true);
   });
 });
 

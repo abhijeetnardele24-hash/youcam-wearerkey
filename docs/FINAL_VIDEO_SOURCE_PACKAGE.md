@@ -125,9 +125,9 @@ Use this script when a valid YouCam API key is active in the environment and `sc
   - Showcase the simultaneous Wearer and Helper perspectives operating side-by-side.
   - Point to the **Judge Evidence & Privacy Boundary Inspection Panel**:
     - Live provider badge, consent policies, zero-byte helper payloads, and Sharp metadata sanitization.
-  - Mention verified test coverage: 109 automated tests (97 Vitest unit/integration tests + 12 Playwright browser/accessibility tests) passing with 0 Axe violations.
+  - Mention verified test coverage: 122 automated tests (110 Vitest unit/integration tests + 12 Playwright browser/accessibility tests) passing with 0 Axe violations.
 - **Narration:**
-  > "Judges can test the entire workflow in under 30 seconds at `/judge`. Backed by 109 automated tests, zero secret leakage, and truthfulness in every claim. WearerKey brings private, collaborative virtual try-on to eCommerce. Thank you."
+  > "Judges can test the entire workflow in under 30 seconds at `/judge`. Backed by 122 automated tests, zero secret leakage, and truthfulness in every claim. WearerKey brings private, collaborative virtual try-on to eCommerce. Thank you."
 
 ---
 
@@ -212,9 +212,9 @@ Use this script when recording without a newly rotated live API key, operating u
   - Show both perspectives operating side-by-side.
   - Point to the stone **DEMO_FIXTURE** badge on `/judge`.
   - Review the **Judge Evidence & Privacy Boundary Inspection Panel** confirming truthful provider mode labeling, zero helper data exposure, and in-memory metadata stripping.
-  - Highlight the full automated test suite: 109 passing automated tests (97 Vitest unit/integration tests + 12 Playwright browser/accessibility tests across desktop and mobile viewports with 0 Axe violations).
+  - Highlight the full automated test suite: 122 passing automated tests (110 Vitest unit/integration tests + 12 Playwright browser/accessibility tests across desktop and mobile viewports with 0 Axe violations).
 - **Narration:**
-  > "Judges can test the full two-party flow in under 30 seconds at `/judge`, displaying the truthful stone DEMO_FIXTURE badge. Backed by 109 automated tests, zero secret leakage, and truthfulness in every claim. WearerKey unlocks private collaborative virtual try-on. Thank you."
+  > "Judges can test the full two-party flow in under 30 seconds at `/judge`, displaying the truthful stone DEMO_FIXTURE badge. Backed by 122 automated tests, zero secret leakage, and truthfulness in every claim. WearerKey unlocks private collaborative virtual try-on. Thank you."
 
 ---
 

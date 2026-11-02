@@ -101,13 +101,18 @@ export const ReceiptPage: React.FC = () => {
             </p>
           </div>
           <span
+            data-testid="receipt-status-badge"
             className={`text-xs font-mono font-semibold px-2.5 py-1 rounded ${
-              receipt.overall_deletion_status === 'CONFIRMED'
-                ? 'bg-wearer-light text-wearer'
-                : 'bg-rust-light text-rust'
+              receipt.deletion_verification_mode === 'SIMULATED'
+                ? 'bg-stone-100 text-stone-700 border border-stone-300'
+                : receipt.overall_deletion_status === 'CONFIRMED'
+                  ? 'bg-wearer-light text-wearer border border-wearer/30'
+                  : 'bg-rust-light text-rust'
             }`}
           >
-            {receipt.overall_deletion_status}
+            {receipt.deletion_verification_mode === 'SIMULATED'
+              ? 'SIMULATED'
+              : receipt.overall_deletion_status}
           </span>
         </div>
 
@@ -140,18 +145,33 @@ export const ReceiptPage: React.FC = () => {
 
         <div className="space-y-2">
           <h3 className="font-serif text-sm font-bold text-ink">Raw Canonical Evidence (JSON)</h3>
-          <pre className="p-4 bg-stone-light/40 rounded border border-stone font-mono text-[11px] text-ink overflow-x-auto max-h-96">
+          <pre
+            tabIndex={0}
+            role="region"
+            aria-label="Raw Canonical Evidence JSON"
+            className="p-4 bg-stone-light/40 rounded border border-stone font-mono text-[11px] text-ink overflow-x-auto max-h-96"
+          >
             {JSON.stringify(receipt, null, 2)}
           </pre>
         </div>
 
         <div className="p-3 rounded bg-stone-light/20 border border-stone text-[11px] text-ink-muted leading-relaxed">
           <p className="font-semibold text-ink mb-0.5">Cryptographic Authenticity Note</p>
-          <p>
-            This deletion assertion is signed by WearerKey using HMAC-SHA256 with key ID{' '}
-            <code className="text-ink font-mono">{receipt.receipt_hmac?.key_id || 'wearerkey-audit-key-v1'}</code>.
-            It asserts local data zeroization and confirmation responses received from YouCam S2S deletion endpoints.
-          </p>
+          {receipt.deletion_verification_mode === 'SIMULATED' ? (
+            <p data-testid="simulated-receipt-note">
+              Application-signed simulation ledger. Local buffers and access were cleared in the fixture workflow; no live YouCam deletion confirmation is claimed.
+            </p>
+          ) : receipt.deletion_verification_mode === 'GENUINE_PROVIDER_CONFIRMED' ? (
+            <p data-testid="genuine-receipt-note">
+              This deletion assertion is signed by WearerKey using HMAC-SHA256 with key ID{' '}
+              <code className="text-ink font-mono">{receipt.receipt_hmac?.key_id || 'wearerkey-audit-key-v1'}</code>.
+              It asserts local data zeroization and confirmation responses received from YouCam S2S deletion endpoints.
+            </p>
+          ) : (
+            <p data-testid="unconfirmed-receipt-note">
+              Application-signed audit receipt recording local zeroization. Upstream provider confirmation was not verified.
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import os from "node:os";
 import crypto from "node:crypto";
 import {
   verifyRecordedResultProvenance,
+  isPathInApprovedDirectory,
   BUNDLED_SYNTHETIC_SAMPLE_SHA256,
   RecordedReceiptProvider
 } from "../../apps/api/src/providers/youcam/index.js";
@@ -265,11 +266,240 @@ describe("Recorded-Result Provenance & Evidence Gate", () => {
     const res = verifyRecordedResultProvenance({ rootDir: tempDir });
     expect(res.valid).toBe(true);
     expect(res.manifest?.provenance).toBe("CONFIRMED_PROVIDER_EXECUTION");
-    expect(res.resultUrl).toBe("/actual_vto.png");
+    expect(res.resultUrl).toBe("/assets/actual_vto.png");
 
     // RecordedReceiptProvider initializes with RECORDED_LIVE_RESULT mode
     const provider = new RecordedReceiptProvider({ rootDir: tempDir, manifestPath });
     expect(provider.mode).toBe("RECORDED_LIVE_RESULT");
+    expect(provider.getRecordedResultUrl()).toBe("/assets/actual_vto.png");
+    expect(provider.getRecordedTaskId()).toBe(`recorded_task_${validTaskHash.slice(0, 16)}`);
+  });
+
+  it("strictly ignores arbitrary recordedResultUrl and recordedTaskId overrides", () => {
+    const manifestPath = path.join(docsDir, "recorded-result-manifest.json");
+    const receiptPath = path.join(docsDir, "live-youcam-receipt.json");
+    const imagePath = path.join(publicDir, "actual_vto.png");
+
+    const imgBytes = Buffer.from("genuine-youcam-v4-render-data");
+    const hash = crypto.createHash("sha256").update(imgBytes).digest("hex");
+    fs.writeFileSync(imagePath, imgBytes);
+
+    fs.writeFileSync(
+      receiptPath,
+      JSON.stringify({
+        live_execution_verified: true,
+        result_image_sha256: hash,
+        evaluated_commit_sha: validCommitSha,
+        task_id_hash: validTaskHash
+      })
+    );
+
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        provenance: "CONFIRMED_PROVIDER_EXECUTION",
+        result_file: "public/actual_vto.png",
+        result_image_sha256: hash,
+        live_receipt_file: "docs/live-youcam-receipt.json",
+        task_id_hash: validTaskHash,
+        evaluated_commit_sha: validCommitSha
+      })
+    );
+
+    // Attempting to override recordedResultUrl or recordedTaskId must be ignored
+    const provider = new RecordedReceiptProvider({
+      rootDir: tempDir,
+      manifestPath,
+      recordedResultUrl: "https://malicious.evil.com/fake.png",
+      recordedTaskId: "malicious_fake_task_id"
+    });
+
+    expect(provider.mode).toBe("RECORDED_LIVE_RESULT");
+    expect(provider.getRecordedResultUrl()).toBe("/assets/actual_vto.png");
+    expect(provider.getRecordedResultUrl()).not.toBe("https://malicious.evil.com/fake.png");
+    expect(provider.getRecordedTaskId()).toBe(`recorded_task_${validTaskHash.slice(0, 16)}`);
+    expect(provider.getRecordedTaskId()).not.toBe("malicious_fake_task_id");
+  });
+
+  it("fails closed when live receipt is missing valid 64-char task_id_hash", () => {
+    const manifestPath = path.join(docsDir, "recorded-result-manifest.json");
+    const receiptPath = path.join(docsDir, "live-youcam-receipt.json");
+    const imagePath = path.join(publicDir, "actual_vto.png");
+
+    const imgBytes = Buffer.from("genuine-data-missing-receipt-task");
+    const hash = crypto.createHash("sha256").update(imgBytes).digest("hex");
+    fs.writeFileSync(imagePath, imgBytes);
+
+    fs.writeFileSync(
+      receiptPath,
+      JSON.stringify({
+        live_execution_verified: true,
+        result_image_sha256: hash,
+        evaluated_commit_sha: validCommitSha
+        // task_id_hash is omitted
+      })
+    );
+
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        provenance: "CONFIRMED_PROVIDER_EXECUTION",
+        result_file: "public/actual_vto.png",
+        result_image_sha256: hash,
+        live_receipt_file: "docs/live-youcam-receipt.json",
+        task_id_hash: validTaskHash,
+        evaluated_commit_sha: validCommitSha
+      })
+    );
+
+    const res = verifyRecordedResultProvenance({ rootDir: tempDir });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toContain("Live receipt is missing valid 64-char task_id_hash");
+  });
+
+  it("fails closed when live receipt task_id_hash mismatches manifest task_id_hash", () => {
+    const manifestPath = path.join(docsDir, "recorded-result-manifest.json");
+    const receiptPath = path.join(docsDir, "live-youcam-receipt.json");
+    const imagePath = path.join(publicDir, "actual_vto.png");
+
+    const imgBytes = Buffer.from("genuine-data-mismatched-task");
+    const hash = crypto.createHash("sha256").update(imgBytes).digest("hex");
+    fs.writeFileSync(imagePath, imgBytes);
+
+    const differentTaskHash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+    fs.writeFileSync(
+      receiptPath,
+      JSON.stringify({
+        live_execution_verified: true,
+        result_image_sha256: hash,
+        evaluated_commit_sha: validCommitSha,
+        task_id_hash: differentTaskHash
+      })
+    );
+
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        provenance: "CONFIRMED_PROVIDER_EXECUTION",
+        result_file: "public/actual_vto.png",
+        result_image_sha256: hash,
+        live_receipt_file: "docs/live-youcam-receipt.json",
+        task_id_hash: validTaskHash,
+        evaluated_commit_sha: validCommitSha
+      })
+    );
+
+    const res = verifyRecordedResultProvenance({ rootDir: tempDir });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toContain("Task ID hash mismatch between receipt");
+  });
+
+  it("fails closed when result_file is outside approved server-owned public directory", () => {
+    const manifestPath = path.join(docsDir, "recorded-result-manifest.json");
+    const receiptPath = path.join(docsDir, "live-youcam-receipt.json");
+
+    // Put image inside docs/ instead of public/ or apps/api/public/
+    const forbiddenPath = path.join(docsDir, "secret_image.png");
+    const imgBytes = Buffer.from("data-in-docs-dir");
+    const hash = crypto.createHash("sha256").update(imgBytes).digest("hex");
+    fs.writeFileSync(forbiddenPath, imgBytes);
+
+    fs.writeFileSync(
+      receiptPath,
+      JSON.stringify({
+        live_execution_verified: true,
+        result_image_sha256: hash,
+        evaluated_commit_sha: validCommitSha,
+        task_id_hash: validTaskHash
+      })
+    );
+
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        provenance: "CONFIRMED_PROVIDER_EXECUTION",
+        result_file: "docs/secret_image.png",
+        result_image_sha256: hash,
+        live_receipt_file: "docs/live-youcam-receipt.json",
+        task_id_hash: validTaskHash,
+        evaluated_commit_sha: validCommitSha
+      })
+    );
+
+    const res = verifyRecordedResultProvenance({ rootDir: tempDir });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toContain("outside approved public directories or uses traversal");
+  });
+
+  it("fails closed when result_file contains traversal or is absolute", () => {
+    const manifestPath = path.join(docsDir, "recorded-result-manifest.json");
+    const receiptPath = path.join(docsDir, "live-youcam-receipt.json");
+
+    fs.writeFileSync(
+      receiptPath,
+      JSON.stringify({
+        live_execution_verified: true,
+        result_image_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        evaluated_commit_sha: validCommitSha,
+        task_id_hash: validTaskHash
+      })
+    );
+
+    for (const badPath of ["../../etc/passwd", "public/../../etc/shadow", "/etc/passwd", "C:\\secret.png"]) {
+      fs.writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          provenance: "CONFIRMED_PROVIDER_EXECUTION",
+          result_file: badPath,
+          result_image_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          live_receipt_file: "docs/live-youcam-receipt.json",
+          task_id_hash: validTaskHash,
+          evaluated_commit_sha: validCommitSha
+        })
+      );
+
+      const res = verifyRecordedResultProvenance({ rootDir: tempDir });
+      expect(res.valid).toBe(false);
+      expect(res.reason).toContain("outside approved public directories or uses traversal");
+    }
+  });
+
+  it("fails closed when served bytes do not match manifest SHA-256", () => {
+    const manifestPath = path.join(docsDir, "recorded-result-manifest.json");
+    const receiptPath = path.join(docsDir, "live-youcam-receipt.json");
+    const imagePath = path.join(publicDir, "actual_vto.png");
+
+    const imgBytes = Buffer.from("genuine-initial-bytes");
+    const hash = crypto.createHash("sha256").update(imgBytes).digest("hex");
+    // Write tampered bytes to disk
+    fs.writeFileSync(imagePath, Buffer.from("tampered-corrupted-bytes"));
+
+    fs.writeFileSync(
+      receiptPath,
+      JSON.stringify({
+        live_execution_verified: true,
+        result_image_sha256: hash,
+        evaluated_commit_sha: validCommitSha,
+        task_id_hash: validTaskHash
+      })
+    );
+
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        provenance: "CONFIRMED_PROVIDER_EXECUTION",
+        result_file: "public/actual_vto.png",
+        result_image_sha256: hash,
+        live_receipt_file: "docs/live-youcam-receipt.json",
+        task_id_hash: validTaskHash,
+        evaluated_commit_sha: validCommitSha
+      })
+    );
+
+    const res = verifyRecordedResultProvenance({ rootDir: tempDir });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toContain("Result file SHA-256 mismatch");
   });
 
   it("forces RecordedReceiptProvider into DEMO_FIXTURE when verification fails", () => {
@@ -278,4 +508,28 @@ describe("Recorded-Result Provenance & Evidence Gate", () => {
     expect(provider.mode).toBe("DEMO_FIXTURE");
     expect(provider.getProvenanceCheck().valid).toBe(false);
   });
+
+  it("correctly identifies approved vs forbidden paths with isPathInApprovedDirectory", () => {
+    // Approved paths
+    expect(isPathInApprovedDirectory("public/result.png", tempDir)).toBe(true);
+    expect(isPathInApprovedDirectory("apps/api/public/result.png", tempDir)).toBe(true);
+
+    // Forbidden: traversal
+    expect(isPathInApprovedDirectory("../secret.png", tempDir)).toBe(false);
+    expect(isPathInApprovedDirectory("public/../../etc/passwd", tempDir)).toBe(false);
+
+    // Forbidden: absolute paths
+    expect(isPathInApprovedDirectory("/etc/passwd", tempDir)).toBe(false);
+    expect(isPathInApprovedDirectory("C:\\Windows\\System32\\file.png", tempDir)).toBe(false);
+
+    // Forbidden: outside approved directories
+    expect(isPathInApprovedDirectory("docs/secret.png", tempDir)).toBe(false);
+    expect(isPathInApprovedDirectory("src/index.ts", tempDir)).toBe(false);
+
+    // Forbidden: empty or null
+    expect(isPathInApprovedDirectory("", tempDir)).toBe(false);
+    expect(isPathInApprovedDirectory("   ", tempDir)).toBe(false);
+    expect(isPathInApprovedDirectory(null as any, tempDir)).toBe(false);
+  });
 });
+

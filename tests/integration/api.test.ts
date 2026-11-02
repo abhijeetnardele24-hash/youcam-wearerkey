@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { buildApp } from "../../apps/api/src/server.js";
 import { getDb } from "../../apps/api/src/db/index.js";
 import { relaySessions, proposals, providerTasks } from "../../apps/api/src/db/schema.js";
 import { encryptProviderIdentifier } from "@wearerkey/domain";
+import { config } from "../../apps/api/src/config.js";
 
 function extractCookie(res: any, cookieName: string): string {
   const setCookie = res.headers["set-cookie"];
@@ -900,5 +904,201 @@ describe("WearerKey End-to-End API Integration", () => {
     });
     expect(sseRes.statusCode).toBe(410);
     expect(sseRes.json().error).toBe("SESSION_REVOKED");
+  });
+
+  it("GET /api/wearer/proposals/:id/result compares HTTP response bytes and SHA-256 with validated result", async () => {
+    // 1. Create session and authenticate wearer
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {
+        allowed_categories: ["outer"],
+        max_proposals: 5,
+        expires_in_hours: 1,
+      },
+    });
+    const { wearer_bootstrap_code } = createRes.json();
+
+    const bootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { bootstrap_code: wearer_bootstrap_code, role: "wearer" },
+    });
+    const wearerCookie = extractCookie(bootRes, "wearerkey_session_wearer");
+
+    // 2. Insert proposal and DEMO_FIXTURE task
+    const db = await getDb();
+    const sessionId = createRes.json().session_id;
+    const encKey = config.PROVIDER_ID_ENCRYPTION_KEY || config.ENCRYPTION_KEY_HEX;
+
+    const propInsert = await db
+      .insert(proposals)
+      .values({
+        sessionId,
+        label: "Tailored Camel Overcoat",
+        garmentCategory: "outer",
+        status: "succeeded",
+      })
+      .returning();
+    const propId = propInsert[0].id;
+
+    await db.insert(providerTasks).values({
+      proposalId: propId,
+      provider: "YOUCAM",
+      mode: "DEMO_FIXTURE",
+      apiFamily: "AI_CLOTHES_V4",
+      taskIdCiphertext: encryptProviderIdentifier("task_test_fixture", encKey),
+      resultUrlCiphertext: encryptProviderIdentifier("/assets/sample_vto_result.png", encKey),
+      providerStatus: "SUCCEEDED",
+      estimatedUnits: 2,
+      observedUnits: 2,
+    });
+
+    // 3. Request proposal result via HTTP endpoint as wearer
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/wearer/proposals/${propId}/result`,
+      headers: { cookie: wearerCookie },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("image/png");
+    expect(res.headers["cache-control"]).toContain("no-store");
+
+    // Compare HTTP response bytes and SHA-256 with the expected public fixture
+    const expectedFixturePath = path.resolve(process.cwd(), "apps/api/public/sample_vto_result.png");
+    const expectedBytes = fs.readFileSync(expectedFixturePath);
+    const expectedSha256 = crypto.createHash("sha256").update(expectedBytes).digest("hex");
+
+    const responseBytes = res.rawPayload;
+    const responseSha256 = crypto.createHash("sha256").update(responseBytes).digest("hex");
+
+    expect(responseSha256).toBe(expectedSha256);
+    expect(responseBytes.equals(expectedBytes)).toBe(true);
+  });
+
+  it("GET /api/wearer/proposals/:id/result in RECORDED_LIVE_RESULT mode serves exact validated bytes and rejects corrupted/tampered bytes", async () => {
+    // 1. Create session and authenticate wearer
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {
+        allowed_categories: ["outer"],
+        max_proposals: 5,
+        expires_in_hours: 1,
+      },
+    });
+    const sessionId = createRes.json().session_id;
+    const { wearer_bootstrap_code } = createRes.json();
+
+    const bootRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { bootstrap_code: wearer_bootstrap_code, role: "wearer" },
+    });
+    const wearerCookie = extractCookie(bootRes, "wearerkey_session_wearer");
+
+    // 2. Prepare mock recorded result manifest and receipt
+    const repoRoot = path.resolve(process.cwd());
+    const docsDir = path.join(repoRoot, "docs");
+    const publicDir = path.join(repoRoot, "apps/api/public");
+
+    const recordedFileName = "recorded_test_eval_result.png";
+    const recordedFilePath = path.join(publicDir, recordedFileName);
+    const recordedBytes = Buffer.from("genuine-youcam-v4-test-binary-pixels-456");
+    const recordedSha256 = crypto.createHash("sha256").update(recordedBytes).digest("hex");
+    fs.writeFileSync(recordedFilePath, recordedBytes);
+
+    const manifestPath = path.join(docsDir, "recorded-result-manifest.json");
+    const testTaskHash = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+    const testCommitSha = "dce769cdaba2c4361af48a1521dd90b02abc8790";
+
+    const liveReceiptPath = path.join(docsDir, "live-youcam-receipt.json");
+    const prevReceiptContent = fs.existsSync(liveReceiptPath) ? fs.readFileSync(liveReceiptPath, "utf-8") : null;
+    const prevManifestContent = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, "utf-8") : null;
+
+    try {
+      fs.writeFileSync(
+        liveReceiptPath,
+        JSON.stringify({
+          live_execution_verified: true,
+          result_image_sha256: recordedSha256,
+          evaluated_commit_sha: testCommitSha,
+          task_id_hash: testTaskHash,
+        })
+      );
+
+      fs.writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          provenance: "CONFIRMED_PROVIDER_EXECUTION",
+          result_file: `apps/api/public/${recordedFileName}`,
+          result_image_sha256: recordedSha256,
+          live_receipt_file: "docs/live-youcam-receipt.json",
+          task_id_hash: testTaskHash,
+          evaluated_commit_sha: testCommitSha,
+        })
+      );
+
+      const db = await getDb();
+      const encKey = config.PROVIDER_ID_ENCRYPTION_KEY || config.ENCRYPTION_KEY_HEX;
+
+      const propInsert = await db
+        .insert(proposals)
+        .values({
+          sessionId,
+          label: "Recorded Coat",
+          garmentCategory: "outer",
+          status: "succeeded",
+        })
+        .returning();
+      const propId = propInsert[0].id;
+
+      await db.insert(providerTasks).values({
+        proposalId: propId,
+        provider: "YOUCAM",
+        mode: "RECORDED_LIVE_RESULT",
+        apiFamily: "AI_CLOTHES_V4",
+        taskIdCiphertext: encryptProviderIdentifier(`task_${testTaskHash.slice(0, 16)}`, encKey),
+        resultUrlCiphertext: encryptProviderIdentifier(`/assets/${recordedFileName}`, encKey),
+        providerStatus: "SUCCEEDED",
+        estimatedUnits: 2,
+        observedUnits: 2,
+      });
+
+      // 3. Request result via HTTP
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/wearer/proposals/${propId}/result`,
+        headers: { cookie: wearerCookie },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-type"]).toBe("image/png");
+
+      const resBytes = res.rawPayload;
+      const resSha256 = crypto.createHash("sha256").update(resBytes).digest("hex");
+
+      expect(resSha256).toBe(recordedSha256);
+      expect(resBytes.equals(recordedBytes)).toBe(true);
+
+      // 4. Tamper bytes and ensure it fails closed (never falls back to synthetic fixture)
+      fs.writeFileSync(recordedFilePath, Buffer.from("tampered-data-should-fail"));
+
+      const failRes = await app.inject({
+        method: "GET",
+        url: `/api/wearer/proposals/${propId}/result`,
+        headers: { cookie: wearerCookie },
+      });
+
+      expect(failRes.statusCode).toBe(500);
+      expect(failRes.json().error).toBe("RECORDED_PROVENANCE_FAILED");
+    } finally {
+      // Clean up temporary files
+      if (fs.existsSync(recordedFilePath)) fs.unlinkSync(recordedFilePath);
+      if (prevReceiptContent) fs.writeFileSync(liveReceiptPath, prevReceiptContent);
+      if (prevManifestContent) fs.writeFileSync(manifestPath, prevManifestContent);
+      else if (fs.existsSync(manifestPath)) fs.unlinkSync(manifestPath);
+    }
   });
 });

@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { GarmentCategory } from "@wearerkey/contracts";
 import type {
   ClothesTryOnProvider,
@@ -20,23 +19,19 @@ export class RecordedReceiptProvider implements ClothesTryOnProvider {
   constructor(options?: {
     rootDir?: string;
     manifestPath?: string;
-    recordedResultUrl?: string;
-    recordedTaskId?: string;
+    recordedResultUrl?: string; // Explicitly ignored to prevent arbitrary URL override
+    recordedTaskId?: string; // Explicitly ignored to prevent arbitrary task ID override
   }) {
     this.verificationResult = verifyRecordedResultProvenance({
       rootDir: options?.rootDir,
       manifestPath: options?.manifestPath
     });
 
-    if (this.verificationResult.valid && this.verificationResult.manifest) {
+    if (this.verificationResult.valid && this.verificationResult.manifest && this.verificationResult.resultUrl) {
       this.mode = "RECORDED_LIVE_RESULT";
-      this.recordedResultUrl =
-        options?.recordedResultUrl ||
-        this.verificationResult.resultUrl ||
-        `/assets/${path.basename(this.verificationResult.manifest.result_file)}`;
-      this.recordedTaskId =
-        options?.recordedTaskId ||
-        `recorded_task_${this.verificationResult.manifest.task_id_hash.slice(0, 16)}`;
+      // Derive STRICTLY from verified provenance only - ignore any arbitrary overrides
+      this.recordedResultUrl = this.verificationResult.resultUrl;
+      this.recordedTaskId = `recorded_task_${this.verificationResult.manifest.task_id_hash.slice(0, 16)}`;
     } else {
       // Evidence gate: If verification fails, force DEMO_FIXTURE
       this.mode = "DEMO_FIXTURE";
@@ -47,6 +42,14 @@ export class RecordedReceiptProvider implements ClothesTryOnProvider {
 
   getProvenanceCheck(): RecordedProvenanceCheckResult {
     return this.verificationResult;
+  }
+
+  getRecordedResultUrl(): string {
+    return this.recordedResultUrl;
+  }
+
+  getRecordedTaskId(): string {
+    return this.recordedTaskId;
   }
 
   async checkCost(_category: GarmentCategory): Promise<{ units: number; currency: string }> {

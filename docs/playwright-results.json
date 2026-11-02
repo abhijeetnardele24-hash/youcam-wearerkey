@@ -4,7 +4,7 @@
       "C:\\Program Files\\nodejs\\node.exe",
       "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\node_modules\\@playwright\\test\\cli.js",
       "test",
-      "--reporter=json"
+      "--reporter=list,json"
     ],
     "configFile": "C:\\Users\\Abhijeet Nardele\\OneDrive\\Desktop\\devpost project\\youcam-wearerkey\\playwright.config.ts",
     "rootDir": "C:/Users/Abhijeet Nardele/OneDrive/Desktop/devpost project/youcam-wearerkey/tests/e2e",
@@ -125,6 +125,9 @@
     "quiet": false,
     "reporter": [
       [
+        "list"
+      ],
+      [
         "json"
       ]
     ],
@@ -188,12 +191,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6400,
+                      "duration": 2691,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:09:59.693Z",
+                      "startTime": "2026-11-02T10:50:49.711Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -222,12 +225,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8520,
+                      "duration": 4822,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:10:06.463Z",
+                      "startTime": "2026-11-02T10:50:52.600Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -256,12 +259,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 12283,
+                      "duration": 905,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:10:15.082Z",
+                      "startTime": "2026-11-02T10:50:57.441Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -290,12 +293,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5573,
+                      "duration": 2053,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:10:27.473Z",
+                      "startTime": "2026-11-02T10:50:58.363Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -324,12 +327,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8244,
+                      "duration": 5726,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:10:33.111Z",
+                      "startTime": "2026-11-02T10:51:00.444Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -358,12 +361,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2646,
+                      "duration": 2074,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:10:41.386Z",
+                      "startTime": "2026-11-02T10:51:06.183Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -373,7 +376,7 @@
               ],
               "id": "fcea6c0b55df4056fff0-3b961d5367c5ddd28233",
               "file": "e2e-journey.spec.ts",
-              "line": 261,
+              "line": 317,
               "column": 7
             },
             {
@@ -392,12 +395,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5480,
+                      "duration": 1953,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:10:46.542Z",
+                      "startTime": "2026-11-02T10:51:08.918Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -426,12 +429,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7613,
+                      "duration": 4471,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:10:52.259Z",
+                      "startTime": "2026-11-02T10:51:11.095Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -460,12 +463,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1984,
+                      "duration": 1270,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:10:59.907Z",
+                      "startTime": "2026-11-02T10:51:15.575Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -494,12 +497,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3869,
+                      "duration": 1943,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:11:01.926Z",
+                      "startTime": "2026-11-02T10:51:16.854Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -528,12 +531,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8511,
+                      "duration": 7358,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:11:05.820Z",
+                      "startTime": "2026-11-02T10:51:18.807Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -562,12 +565,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6298,
+                      "duration": 4608,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-02T10:11:14.352Z",
+                      "startTime": "2026-11-02T10:51:26.175Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -577,7 +580,7 @@
               ],
               "id": "fcea6c0b55df4056fff0-0b2064643aeb957fa5dc",
               "file": "e2e-journey.spec.ts",
-              "line": 261,
+              "line": 317,
               "column": 7
             }
           ]
@@ -587,8 +590,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-02T10:09:55.076Z",
-    "duration": 87577.697,
+    "startTime": "2026-11-02T10:50:46.244Z",
+    "duration": 44935.640999999996,
     "expected": 12,
     "skipped": 0,
     "unexpected": 0,

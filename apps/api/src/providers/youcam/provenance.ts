@@ -33,18 +33,47 @@ export interface VerifyProvenanceOptions {
 }
 
 /**
+ * Validates that a file path points into an approved server-owned public directory
+ * and does not use directory traversal, absolute paths, or escape characters.
+ */
+export function isPathInApprovedDirectory(filePath: string, rootDir: string): boolean {
+  if (typeof filePath !== "string" || filePath.trim().length === 0) {
+    return false;
+  }
+  // Reject traversal (..)
+  if (filePath.includes("..") || path.normalize(filePath).startsWith("..")) {
+    return false;
+  }
+  // Reject absolute paths
+  if (path.isAbsolute(filePath) || /^[a-zA-Z]:/.test(filePath) || filePath.startsWith("/") || filePath.startsWith("\\")) {
+    return false;
+  }
+  const resolved = path.resolve(rootDir, filePath);
+  const approvedDirs = [
+    path.resolve(rootDir, "apps/api/public"),
+    path.resolve(rootDir, "public")
+  ];
+  return approvedDirs.some((approved) => {
+    const rel = path.relative(approved, resolved);
+    return !rel.startsWith("..") && !path.isAbsolute(rel);
+  });
+}
+
+/**
  * Validates whether recorded live result evidence satisfies the strict provenance requirements.
  * RECORDED_LIVE_RESULT is impossible unless:
  * 1. manifest exists;
  * 2. manifest schema validates;
- * 3. result file exists;
- * 4. result file is not the bundled synthetic sample;
- * 5. result file SHA-256 strictly matches manifest;
- * 6. referenced live receipt exists;
- * 7. receipt has live_execution_verified: true;
- * 8. receipt result hash matches served image;
- * 9. receipt evaluated SHA is valid and matches manifest;
- * 10. provider task hash exists and matches.
+ * 3. result file is constrained to an approved server-owned directory (no traversal/absolute paths);
+ * 4. result file exists;
+ * 5. result file is not the bundled synthetic sample;
+ * 6. result file SHA-256 strictly matches manifest;
+ * 7. referenced live receipt exists;
+ * 8. receipt has live_execution_verified: true;
+ * 9. receipt has valid 64-char task_id_hash strictly matching manifest;
+ * 10. receipt result hash matches manifest and served image;
+ * 11. receipt evaluated SHA is valid and matches manifest;
+ * 12. exact validated file matches served URL.
  */
 export function verifyRecordedResultProvenance(options: VerifyProvenanceOptions = {}): RecordedProvenanceCheckResult {
   const rootDir = options.rootDir || path.resolve(process.cwd());
@@ -69,16 +98,22 @@ export function verifyRecordedResultProvenance(options: VerifyProvenanceOptions 
   }
   const manifest = parseResult.data;
 
-  // 3. Result file must exist
-  const resultFilePath = path.isAbsolute(manifest.result_file)
-    ? manifest.result_file
-    : path.resolve(rootDir, manifest.result_file);
+  // 3. Constrain to approved server-owned directory (reject traversal & arbitrary paths)
+  if (!isPathInApprovedDirectory(manifest.result_file, rootDir)) {
+    return {
+      valid: false,
+      reason: `Result file path "${manifest.result_file}" is outside approved public directories or uses traversal.`
+    };
+  }
 
+  const resultFilePath = path.resolve(rootDir, manifest.result_file);
+
+  // 4. Result file must exist
   if (!fs.existsSync(resultFilePath)) {
     return { valid: false, reason: `Result file not found at ${resultFilePath}` };
   }
 
-  // 4. Must never be the bundled synthetic sample
+  // 5. Must never be the bundled synthetic sample
   const baseName = path.basename(resultFilePath);
   if (baseName === "sample_vto_result.png") {
     return {
@@ -97,7 +132,7 @@ export function verifyRecordedResultProvenance(options: VerifyProvenanceOptions 
     };
   }
 
-  // 5. Result file SHA-256 must match manifest
+  // 6. Result file SHA-256 must match manifest
   if (actualFileSha256.toLowerCase() !== manifest.result_image_sha256.toLowerCase()) {
     return {
       valid: false,
@@ -105,7 +140,7 @@ export function verifyRecordedResultProvenance(options: VerifyProvenanceOptions 
     };
   }
 
-  // 6. Referenced live receipt exists
+  // 7. Referenced live receipt exists
   const liveReceiptPath = path.isAbsolute(manifest.live_receipt_file)
     ? manifest.live_receipt_file
     : path.resolve(rootDir, manifest.live_receipt_file);
@@ -114,7 +149,7 @@ export function verifyRecordedResultProvenance(options: VerifyProvenanceOptions 
     return { valid: false, reason: `Referenced live receipt not found at ${liveReceiptPath}` };
   }
 
-  // 7. Receipt must have live_execution_verified: true
+  // 8. Receipt must have live_execution_verified: true
   let receipt: any;
   try {
     receipt = JSON.parse(fs.readFileSync(liveReceiptPath, "utf-8"));
@@ -129,16 +164,36 @@ export function verifyRecordedResultProvenance(options: VerifyProvenanceOptions 
     };
   }
 
-  // 8. Receipt result hash matches the served image
+  // 9. Receipt must have valid 64-char task_id_hash strictly matching manifest
+  if (!receipt.task_id_hash || !/^[0-9a-f]{64}$/i.test(receipt.task_id_hash)) {
+    return {
+      valid: false,
+      reason: "Live receipt is missing valid 64-char task_id_hash"
+    };
+  }
+  if (receipt.task_id_hash.toLowerCase() !== manifest.task_id_hash.toLowerCase()) {
+    return {
+      valid: false,
+      reason: `Task ID hash mismatch between receipt (${receipt.task_id_hash}) and manifest (${manifest.task_id_hash})`
+    };
+  }
+
+  // 10. Receipt result hash must exist and match manifest
   const receiptResultHash = receipt.result_image_sha256 || receipt.result_sha256 || receipt.image_hash;
-  if (!receiptResultHash || receiptResultHash.toLowerCase() !== manifest.result_image_sha256.toLowerCase()) {
+  if (!receiptResultHash || !/^[0-9a-f]{64}$/i.test(receiptResultHash)) {
+    return {
+      valid: false,
+      reason: "Live receipt is missing valid 64-char result image hash"
+    };
+  }
+  if (receiptResultHash.toLowerCase() !== manifest.result_image_sha256.toLowerCase()) {
     return {
       valid: false,
       reason: `Receipt result hash does not match served image hash (${receiptResultHash} !== ${manifest.result_image_sha256})`
     };
   }
 
-  // 9. Receipt evaluated SHA is valid and matches manifest
+  // 11. Receipt evaluated SHA is valid and matches manifest
   if (!receipt.evaluated_commit_sha || !/^[0-9a-f]{40}$/i.test(receipt.evaluated_commit_sha)) {
     return {
       valid: false,
@@ -152,24 +207,10 @@ export function verifyRecordedResultProvenance(options: VerifyProvenanceOptions 
     };
   }
 
-  // 10. Provider task hash exists
-  if (!manifest.task_id_hash || !/^[0-9a-f]{64}$/i.test(manifest.task_id_hash)) {
-    return { valid: false, reason: "Provider task hash missing or invalid in manifest" };
-  }
-  if (receipt.task_id_hash && receipt.task_id_hash.toLowerCase() !== manifest.task_id_hash.toLowerCase()) {
-    return {
-      valid: false,
-      reason: `Task ID hash mismatch between receipt (${receipt.task_id_hash}) and manifest (${manifest.task_id_hash})`
-    };
-  }
-
-  // Generate safe result URL
+  // 12. Generate safe canonical /assets/... result URL
   const normalizedFile = manifest.result_file.replace(/\\/g, "/");
-  const resultUrl = normalizedFile.startsWith("public/")
-    ? `/${normalizedFile.slice(7)}`
-    : normalizedFile.startsWith("apps/api/public/")
-      ? `/${normalizedFile.slice(16)}`
-      : `/assets/${path.basename(normalizedFile)}`;
+  const fileName = path.basename(normalizedFile);
+  const resultUrl = `/assets/${fileName}`;
 
   return {
     valid: true,
@@ -178,3 +219,5 @@ export function verifyRecordedResultProvenance(options: VerifyProvenanceOptions 
     resultUrl
   };
 }
+
+

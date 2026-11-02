@@ -273,13 +273,24 @@ export function runClaimsCheck(options: CheckClaimsOptions = {}): CheckClaimsRes
 
       // Exact historical git tree verification of claimed test files
       const evalSha = evidence.evaluated_commit_sha;
-      const claimedFiles = evidence.evidence?.test_suites?.vitest_unit_and_integration?.files;
-      if (Array.isArray(claimedFiles) && claimedFiles.length > 0) {
+      const vitestClaimed = evidence.evidence?.test_suites?.vitest_unit_and_integration;
+      const claimedFiles = vitestClaimed?.files;
+      const playwrightClaimed = evidence.evidence?.test_suites?.playwright_browser_e2e;
+
+      // 1. Fail when files is missing
+      if (claimedFiles === undefined || claimedFiles === null) {
+        errors.push(`Evidence integrity violation: Claimed test files list ("files") is missing in docs/evidence-index.json.`);
+      } else if (!Array.isArray(claimedFiles) || claimedFiles.length === 0) {
+        // 2. Fail when files is empty
+        errors.push(`Evidence integrity violation: Claimed test files list ("files") is empty in docs/evidence-index.json.`);
+      } else {
+        // 3. Fail when evaluated SHA is malformed
         if (!evalSha || typeof evalSha !== "string" || !/^[0-9a-f]{40}$/i.test(evalSha)) {
           errors.push(`Evidence integrity violation: Malformed evaluated_commit_sha "${evalSha}". Must be a 40-character hex SHA.`);
         } else {
           const gitRoot = findGitRoot(rootDir) ?? findGitRoot(process.cwd()) ?? findGitRoot(__dirname);
           let commitExists = false;
+          // 4. Fail when commit is unavailable in Git history
           try {
             execFileSync("git", ["cat-file", "-e", `${evalSha}^{commit}`], {
               cwd: gitRoot ?? process.cwd(),
@@ -291,6 +302,7 @@ export function runClaimsCheck(options: CheckClaimsOptions = {}): CheckClaimsRes
             commitExists = false;
           }
 
+          // 5. Fail when any claimed file is absent in that commit
           if (commitExists) {
             for (const file of claimedFiles) {
               if (!isValidRepoRelativePath(file)) {
@@ -307,6 +319,23 @@ export function runClaimsCheck(options: CheckClaimsOptions = {}): CheckClaimsRes
               }
             }
           }
+        }
+      }
+
+      // 6. Fail when counts differ from machine-readable results
+      if (vitestStats && vitestClaimed) {
+        if (vitestClaimed.total !== vitestStats.total || vitestClaimed.passed !== vitestStats.passed) {
+          errors.push(
+            `Evidence integrity violation: Vitest count mismatch between evidence-index.json (${vitestClaimed.passed}/${vitestClaimed.total}) and vitest-results.json (${vitestStats.passed}/${vitestStats.total}).`
+          );
+        }
+      }
+
+      if (playwrightStats && playwrightClaimed) {
+        if (playwrightClaimed.total !== playwrightStats.total || playwrightClaimed.passed !== playwrightStats.passed) {
+          errors.push(
+            `Evidence integrity violation: Playwright count mismatch between evidence-index.json (${playwrightClaimed.passed}/${playwrightClaimed.total}) and playwright-results.json (${playwrightStats.passed}/${playwrightStats.total}).`
+          );
         }
       }
     } catch (e: any) {

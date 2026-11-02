@@ -1,13 +1,13 @@
 {
-  "evaluated_commit_sha": "4bf776fad222d9feea680697840ead39230bcecd",
-  "timestamp": "2026-11-02T10:11:25.929Z",
+  "evaluated_commit_sha": "dce769cdaba2c4361af48a1521dd90b02abc8790",
+  "timestamp": "2026-11-02T10:58:27.824Z",
   "status": "PASSED",
   "claims_verified": true,
   "verdict": "INTERNAL_COMPLETE_EXTERNAL_ACTION_REQUIRED",
   "tests": {
     "vitest_unit_and_integration": {
-      "total": 97,
-      "passed": 97,
+      "total": 110,
+      "passed": 110,
       "failed": 0,
       "suites": [
         "check-claims.test.ts",
