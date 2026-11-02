@@ -17,8 +17,8 @@
     "test_suites": {
       "vitest_unit_and_integration": {
         "status": "PASSED",
-        "total": 81,
-        "passed": 81,
+        "total": 97,
+        "passed": 97,
         "failed": 0,
         "files": [
           "tests/unit/domain.test.ts",

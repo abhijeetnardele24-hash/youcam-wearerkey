@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { runClaimsCheck, REQUIRED_DOCS } from "../../scripts/check-claims.js";
+import { runClaimsCheck, REQUIRED_DOCS, isValidRepoRelativePath, getCommitSha } from "../../scripts/check-claims.js";
 
 describe("Fail-Closed Claims & Evidence Integrity Auditor", () => {
   let tempDir: string;
@@ -193,12 +193,69 @@ describe("Fail-Closed Claims & Evidence Integrity Auditor", () => {
     expect(fs.existsSync(path.join(tempDir, "docs/ci-evidence-snapshot.json"))).toBe(true);
   });
 
-  it("fails closed when evidence-index.json claims test files that did not exist in the evaluated commit", () => {
+  it("fails closed when evaluated_commit_sha is malformed (not 40-char hex)", () => {
     fs.writeFileSync(
       path.join(tempDir, "docs/evidence-index.json"),
       JSON.stringify({
         project: "WearerKey",
-        evaluated_commit_sha: "8b71221b7b59692dd60dd0075df82315483d7e75",
+        evaluated_commit_sha: "invalid-sha-12345",
+        evidence: {
+          test_suites: {
+            vitest_unit_and_integration: {
+              total: 80,
+              passed: 80,
+              files: ["package.json"]
+            },
+            playwright_browser_e2e: { total: 10, passed: 10 }
+          }
+        }
+      })
+    );
+
+    const res = runClaimsCheck({
+      cwd: tempDir,
+      strictSha: false
+    });
+
+    expect(res.passed).toBe(false);
+    expect(res.errors.some((e) => e.includes("Evidence integrity violation") && e.includes("Malformed evaluated_commit_sha"))).toBe(true);
+  });
+
+  it("fails closed when evaluated commit cannot be resolved in Git history", () => {
+    fs.writeFileSync(
+      path.join(tempDir, "docs/evidence-index.json"),
+      JSON.stringify({
+        project: "WearerKey",
+        evaluated_commit_sha: "0000000000000000000000000000000000000000",
+        evidence: {
+          test_suites: {
+            vitest_unit_and_integration: {
+              total: 80,
+              passed: 80,
+              files: ["package.json"]
+            },
+            playwright_browser_e2e: { total: 10, passed: 10 }
+          }
+        }
+      })
+    );
+
+    const res = runClaimsCheck({
+      cwd: tempDir,
+      strictSha: false
+    });
+
+    expect(res.passed).toBe(false);
+    expect(res.errors.some((e) => e.includes("Evidence integrity violation") && e.includes("cannot be resolved in Git history"))).toBe(true);
+  });
+
+  it("fails closed when evidence-index.json claims test files that did not exist in the evaluated commit", () => {
+    const headSha = getCommitSha();
+    fs.writeFileSync(
+      path.join(tempDir, "docs/evidence-index.json"),
+      JSON.stringify({
+        project: "WearerKey",
+        evaluated_commit_sha: headSha,
         evidence: {
           test_suites: {
             vitest_unit_and_integration: {
@@ -218,8 +275,115 @@ describe("Fail-Closed Claims & Evidence Integrity Auditor", () => {
     });
 
     expect(res.passed).toBe(false);
-    expect(res.errors.some((e) => e.includes("Evidence integrity violation"))).toBe(true);
-    expect(res.errors.some((e) => e.includes("non-existent-fabricated-test.ts"))).toBe(true);
+    expect(res.errors.some((e) => e.includes("Evidence integrity violation") && e.includes("non-existent-fabricated-test.ts"))).toBe(true);
+  });
+
+  it("fails closed when claimed test file has malicious, traversal, or control-character path", () => {
+    const headSha = getCommitSha();
+    const maliciousPaths = [
+      "../../etc/passwd",
+      "test.ts; rm -rf /",
+      "test\x00.ts",
+      "/absolute/path/test.ts",
+      "test&inject.ts",
+      "test|pipe.ts",
+      "test`backtick.ts"
+    ];
+
+    for (const badPath of maliciousPaths) {
+      fs.writeFileSync(
+        path.join(tempDir, "docs/evidence-index.json"),
+        JSON.stringify({
+          project: "WearerKey",
+          evaluated_commit_sha: headSha,
+          evidence: {
+            test_suites: {
+              vitest_unit_and_integration: {
+                total: 80,
+                passed: 80,
+                files: [badPath]
+              },
+              playwright_browser_e2e: { total: 10, passed: 10 }
+            }
+          }
+        })
+      );
+
+      const res = runClaimsCheck({
+        cwd: tempDir,
+        strictSha: false
+      });
+
+      expect(res.passed).toBe(false);
+      expect(res.errors.some((e) => e.includes("Evidence integrity violation") && e.includes("invalid or unsafe"))).toBe(true);
+    }
+  });
+
+  it("passes when evaluated commit and claimed test files genuinely exist in Git history", () => {
+    const headSha = getCommitSha();
+    fs.writeFileSync(
+      path.join(tempDir, "docs/evidence-index.json"),
+      JSON.stringify({
+        project: "WearerKey",
+        evaluated_commit_sha: headSha,
+        evidence: {
+          test_suites: {
+            vitest_unit_and_integration: {
+              total: 80,
+              passed: 80,
+              files: ["package.json"]
+            },
+            playwright_browser_e2e: { total: 10, passed: 10 }
+          }
+        }
+      })
+    );
+
+    const res = runClaimsCheck({
+      cwd: tempDir,
+      strictSha: false
+    });
+
+    expect(res.passed).toBe(true);
+    expect(res.errors).toEqual([]);
+  });
+
+  it("validates repository-relative paths correctly with isValidRepoRelativePath", () => {
+    // Valid relative paths
+    expect(isValidRepoRelativePath("package.json")).toBe(true);
+    expect(isValidRepoRelativePath("tests/unit/check-claims.test.ts")).toBe(true);
+    expect(isValidRepoRelativePath("docs/evidence-index.json")).toBe(true);
+
+    // Invalid: absolute paths
+    expect(isValidRepoRelativePath("/etc/passwd")).toBe(false);
+    expect(isValidRepoRelativePath("C:\\Windows\\System32")).toBe(false);
+
+    // Invalid: traversal
+    expect(isValidRepoRelativePath("../secret.txt")).toBe(false);
+    expect(isValidRepoRelativePath("tests/../../etc/passwd")).toBe(false);
+
+    // Invalid: control characters
+    expect(isValidRepoRelativePath("test\x00.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test\x1f.ts")).toBe(false);
+
+    // Invalid: shell metacharacters
+    expect(isValidRepoRelativePath("test;rm.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test|pipe.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test&amp.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test`eval`.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test$var.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test with spaces.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test*glob.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test?char.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test~tilde.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test#hash.ts")).toBe(false);
+    expect(isValidRepoRelativePath("test\\backslash.ts")).toBe(false);
+
+    // Invalid: non-string or empty
+    expect(isValidRepoRelativePath("")).toBe(false);
+    expect(isValidRepoRelativePath("   ")).toBe(false);
+    expect(isValidRepoRelativePath(null)).toBe(false);
+    expect(isValidRepoRelativePath(undefined)).toBe(false);
   });
 });
 

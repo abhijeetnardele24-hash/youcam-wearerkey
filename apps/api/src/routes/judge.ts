@@ -13,6 +13,7 @@ import { config } from "../config.js";
 import { getDb } from "../db/index.js";
 import { relaySessions, proposals, providerTasks, decisions, auditEvents } from "../db/schema.js";
 import { ephemeralImageStore } from "../services/garment-store.js";
+import { verifyRecordedResultProvenance } from "../providers/youcam/provenance.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -78,22 +79,23 @@ export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Determine provider mode strictly based on validated recorded-result manifest evidence
-    let providerMode: "LIVE_YOUCAM" | "RECORDED_LIVE_RESULT" | "DEMO_FIXTURE" = "DEMO_FIXTURE";
-    const manifestPath = path.resolve(__dirname, "../../docs/recorded-result-manifest.json");
-    if (fs.existsSync(manifestPath)) {
-      try {
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
-        if (
-          manifest.provenance === "CONFIRMED_PROVIDER_EXECUTION" &&
-          manifest.result_image_sha256 &&
-          manifest.task_id_hash &&
-          manifest.evaluated_commit_sha
-        ) {
-          providerMode = "RECORDED_LIVE_RESULT";
-        }
-      } catch {
-        providerMode = "DEMO_FIXTURE";
-      }
+    let providerMode: "LIVE_YOUCAM" | "RECORDED_LIVE_RESULT" | "DEMO_FIXTURE";
+    let seededResultUrl: string;
+    let seededTaskId: string;
+
+    const repoRoot = fs.existsSync(path.resolve(__dirname, "../../../../package.json"))
+      ? path.resolve(__dirname, "../../../..")
+      : process.cwd();
+    const provenanceCheck = verifyRecordedResultProvenance({ rootDir: repoRoot });
+
+    if (provenanceCheck.valid && provenanceCheck.manifest) {
+      providerMode = "RECORDED_LIVE_RESULT";
+      seededResultUrl = provenanceCheck.resultUrl || `/assets/${path.basename(provenanceCheck.manifest.result_file)}`;
+      seededTaskId = `recorded_task_${provenanceCheck.manifest.task_id_hash.slice(0, 16)}`;
+    } else {
+      providerMode = "DEMO_FIXTURE";
+      seededResultUrl = "/assets/sample_vto_result.png";
+      seededTaskId = "judge_fixture_task_v4";
     }
 
     // 3. Seed Provider Task with Truthful Mode (DEMO_FIXTURE unless evidence exists)
@@ -102,8 +104,8 @@ export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
       provider: "YOUCAM",
       mode: providerMode,
       apiFamily: "AI_CLOTHES_V4",
-      taskIdCiphertext: encryptProviderIdentifier("judge_fixture_task_v4", config.ENCRYPTION_KEY_HEX),
-      resultUrlCiphertext: encryptProviderIdentifier("/assets/sample_vto_result.png", config.ENCRYPTION_KEY_HEX),
+      taskIdCiphertext: encryptProviderIdentifier(seededTaskId, config.ENCRYPTION_KEY_HEX),
+      resultUrlCiphertext: encryptProviderIdentifier(seededResultUrl, config.ENCRYPTION_KEY_HEX),
       estimatedUnits: 2,
       observedUnits: 2,
       providerStatus: "SUCCEEDED",

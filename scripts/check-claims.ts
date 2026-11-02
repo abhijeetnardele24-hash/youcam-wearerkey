@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const FORBIDDEN_STRINGS = [
   "100% safe to submit",
@@ -32,9 +36,54 @@ export const REQUIRED_DOCS = [
   "docs/live-youcam-receipt.json"
 ];
 
-export function getCommitSha(): string {
+export function findGitRoot(startDir: string): string | null {
+  let curr = path.resolve(startDir);
+  while (curr) {
+    if (fs.existsSync(path.join(curr, ".git"))) {
+      return curr;
+    }
+    const parent = path.dirname(curr);
+    if (parent === curr) break;
+    curr = parent;
+  }
+  return null;
+}
+
+export function isValidRepoRelativePath(filePath: unknown): boolean {
+  if (typeof filePath !== "string" || filePath.trim().length === 0) {
+    return false;
+  }
+  // Reject absolute paths
+  if (path.isAbsolute(filePath) || /^[a-zA-Z]:/.test(filePath) || filePath.startsWith("/") || filePath.startsWith("\\")) {
+    return false;
+  }
+  // Reject traversal (..)
+  if (filePath.includes("..") || path.normalize(filePath).startsWith("..")) {
+    return false;
+  }
+  // Reject control characters [\x00-\x1f\x7f]
+  for (let i = 0; i < filePath.length; i++) {
+    const code = filePath.charCodeAt(i);
+    if ((code >= 0 && code <= 31) || code === 127) {
+      return false;
+    }
+  }
+  // Reject shell metacharacters [&|;<>$`"'\\*?~#\s]
+  if (/[&|;<>$`"'\\*?~#\s]/.test(filePath)) {
+    return false;
+  }
+  return true;
+}
+
+export function getCommitSha(cwd?: string): string {
+  const searchDir = cwd ?? process.cwd();
+  const gitRoot = findGitRoot(searchDir) ?? findGitRoot(process.cwd()) ?? findGitRoot(__dirname);
   try {
-    return execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: gitRoot ?? searchDir,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
   } catch {
     return process.env.GIT_COMMIT_SHA || "UNKNOWN_COMMIT";
   }
@@ -225,28 +274,37 @@ export function runClaimsCheck(options: CheckClaimsOptions = {}): CheckClaimsRes
       // Exact historical git tree verification of claimed test files
       const evalSha = evidence.evaluated_commit_sha;
       const claimedFiles = evidence.evidence?.test_suites?.vitest_unit_and_integration?.files;
-      if (evalSha && /^[0-9a-f]{40}$/i.test(evalSha) && Array.isArray(claimedFiles) && claimedFiles.length > 0) {
-        let commitExists = false;
-        let gitCwd = rootDir;
-        try {
-          execSync(`git cat-file -e ${evalSha}`, { cwd: rootDir, stdio: ["ignore", "ignore", "pipe"] });
-          commitExists = true;
-        } catch {
+      if (Array.isArray(claimedFiles) && claimedFiles.length > 0) {
+        if (!evalSha || typeof evalSha !== "string" || !/^[0-9a-f]{40}$/i.test(evalSha)) {
+          errors.push(`Evidence integrity violation: Malformed evaluated_commit_sha "${evalSha}". Must be a 40-character hex SHA.`);
+        } else {
+          const gitRoot = findGitRoot(rootDir) ?? findGitRoot(process.cwd()) ?? findGitRoot(__dirname);
+          let commitExists = false;
           try {
-            execSync(`git cat-file -e ${evalSha}`, { cwd: process.cwd(), stdio: ["ignore", "ignore", "pipe"] });
+            execFileSync("git", ["cat-file", "-e", `${evalSha}^{commit}`], {
+              cwd: gitRoot ?? process.cwd(),
+              stdio: ["ignore", "ignore", "pipe"]
+            });
             commitExists = true;
-            gitCwd = process.cwd();
           } catch {
+            errors.push(`Evidence integrity violation: Evaluated commit "${evalSha}" cannot be resolved in Git history.`);
             commitExists = false;
           }
-        }
 
-        if (commitExists) {
-          for (const file of claimedFiles) {
-            try {
-              execSync(`git cat-file -e ${evalSha}:${file}`, { cwd: gitCwd, stdio: ["ignore", "ignore", "pipe"] });
-            } catch {
-              errors.push(`Evidence integrity violation: Claimed test file "${file}" did not exist in evaluated commit ${evalSha}.`);
+          if (commitExists) {
+            for (const file of claimedFiles) {
+              if (!isValidRepoRelativePath(file)) {
+                errors.push(`Evidence integrity violation: Claimed test file path "${file}" is invalid or unsafe.`);
+                continue;
+              }
+              try {
+                execFileSync("git", ["cat-file", "-e", `${evalSha}:${file}`], {
+                  cwd: gitRoot ?? process.cwd(),
+                  stdio: ["ignore", "ignore", "pipe"]
+                });
+              } catch {
+                errors.push(`Evidence integrity violation: Claimed test file "${file}" did not exist in evaluated commit ${evalSha}.`);
+              }
             }
           }
         }

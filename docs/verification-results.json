@@ -1,19 +1,20 @@
 {
-  "evaluated_commit_sha": "506c025db803fa85d2768dac82d706933ab3b044",
-  "timestamp": "2026-11-02T09:15:38.245Z",
+  "evaluated_commit_sha": "4bf776fad222d9feea680697840ead39230bcecd",
+  "timestamp": "2026-11-02T10:11:25.929Z",
   "status": "PASSED",
   "claims_verified": true,
   "verdict": "INTERNAL_COMPLETE_EXTERNAL_ACTION_REQUIRED",
   "tests": {
     "vitest_unit_and_integration": {
-      "total": 81,
-      "passed": 81,
+      "total": 97,
+      "passed": 97,
       "failed": 0,
       "suites": [
         "check-claims.test.ts",
         "domain.test.ts",
         "image-sanitizer.test.ts",
         "live-youcam-smoke.test.ts",
+        "recorded-provenance.test.ts",
         "youcam-provider.test.ts",
         "api.test.ts"
       ]
