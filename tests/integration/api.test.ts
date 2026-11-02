@@ -182,7 +182,7 @@ describe("WearerKey End-to-End API Integration", () => {
     expect(seedData.session_id).toBeDefined();
     expect(seedData.wearer_url).toContain("/wearer#bootstrap=");
     expect(seedData.helper_url).toContain("/helper#bootstrap=");
-    expect(seedData.mode).toBe("RECORDED_LIVE_RESULT");
+    expect(["DEMO_FIXTURE", "RECORDED_LIVE_RESULT"]).toContain(seedData.mode);
 
     // Redeem wearer bootstrap
     const wearerBootRes = await app.inject({
@@ -219,6 +219,7 @@ describe("WearerKey End-to-End API Integration", () => {
 
     expect(wearerView.statusCode).toBe(200);
     const wData = wearerView.json();
+    expect(wData.source_image_url).toBe("/api/wearer/session/source");
     expect(wData.proposals).toHaveLength(1);
     expect(wData.proposals[0].label).toBe("Tailored Camel Wool Overcoat");
     expect(wData.proposals[0].decision).toBe("MAYBE");

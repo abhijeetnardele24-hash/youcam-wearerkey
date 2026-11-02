@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, ShieldAlert, Sparkles, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, ShieldAlert, Sparkles, AlertTriangle, ArrowRight } from 'lucide-react';
 
 interface PrivateMirrorProps {
   sourceImageUrl?: string;
@@ -11,6 +11,8 @@ interface PrivateMirrorProps {
   status?: string;
   failureMessage?: string | null;
   isProcessing?: boolean;
+  providerMode?: 'LIVE_YOUCAM' | 'RECORDED_LIVE_RESULT' | 'DEMO_FIXTURE';
+  showSourcePhoto?: boolean;
 }
 
 export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
@@ -23,11 +25,42 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
   status,
   failureMessage,
   isProcessing = false,
+  providerMode = 'DEMO_FIXTURE',
+  showSourcePhoto = false,
 }) => {
   const displayResultUrl = resultImageUrl || resultUrl || undefined;
   const displayTitle = garmentTitle || label || 'Proposed Garment';
   const [viewMode, setViewMode] = useState<'three-stage' | 'result' | 'split' | 'source'>('three-stage');
   const [zoom, setZoom] = useState(false);
+
+  const isLive = providerMode === 'LIVE_YOUCAM';
+  const isRecorded = providerMode === 'RECORDED_LIVE_RESULT';
+  const hasVisibleSource = !!(showSourcePhoto && sourceImageUrl);
+
+  const renderModeBadge = () => {
+    if (isLive) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          Live YouCam Clothes V4 Result
+        </span>
+      );
+    }
+    if (isRecorded) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          Recorded YouCam Clothes V4 Result
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-stone-100 text-stone-700 border border-stone-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
+        Deterministic Demo Fixture
+      </span>
+    );
+  };
 
   return (
     <div className="parcel-card overflow-hidden bg-white border-2 border-wearer/40">
@@ -108,11 +141,11 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
         ) : !displayResultUrl ? (
           <div className="text-center p-8 text-ink-muted">
             <Sparkles className="w-8 h-8 mx-auto mb-2 text-stone-dark opacity-60" />
-            <p className="text-xs">No try-on generated yet. Click "Request Virtual Try-On" below to render.</p>
+            <p className="text-xs">No try-on generated yet. Propose an item to test the fitting flow.</p>
           </div>
         ) : (
           <div className="w-full flex flex-col items-center justify-center space-y-4">
-            {/* View Mode: Three-Stage Journey (Wearer Photo -> Garment Candidate -> YouCam Result) */}
+            {/* View Mode: Three-Stage Journey (Wearer Photo -> Garment Candidate -> Result) */}
             {viewMode === 'three-stage' && (
               <div className="w-full space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
@@ -121,15 +154,17 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
                     <span className="text-[10px] font-semibold font-mono text-ink-muted uppercase block mb-1">
                       1. Private Wearer Photo
                     </span>
-                    {sourceImageUrl ? (
+                    {hasVisibleSource ? (
                       <img
                         src={sourceImageUrl}
                         alt="Original private wearer reference"
                         className="rounded h-44 w-full object-contain mx-auto"
                       />
                     ) : (
-                      <div className="h-44 bg-stone-light/30 rounded flex items-center justify-center text-[11px] text-ink-muted px-2">
-                        Wearer reference loaded (protected)
+                      <div className="h-44 bg-stone-light/30 rounded flex flex-col items-center justify-center text-[11px] text-ink-muted px-2 space-y-1">
+                        <EyeOff className="w-5 h-5 text-stone-dark" />
+                        <span className="font-semibold text-ink">Wearer Photo Shielded</span>
+                        <span className="text-[10px] text-ink-subtle">Protected by privacy control</span>
                       </div>
                     )}
                     <span className="text-[10px] text-wearer font-medium mt-1 block">Wearer-Only View</span>
@@ -154,17 +189,23 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
                     <span className="text-[10px] text-helper font-medium mt-1 block">Curated by Helper</span>
                   </div>
 
-                  {/* Step 3: YouCam Result */}
+                  {/* Step 3: Result */}
                   <div className="text-center bg-white p-2.5 rounded border-2 border-wearer shadow-sm">
                     <span className="text-[10px] font-semibold font-mono text-wearer uppercase block mb-1">
-                      3. YouCam VTO Result
+                      {isLive ? '3. Live YouCam VTO' : isRecorded ? '3. Recorded YouCam VTO' : '3. Workflow Demo Fixture'}
                     </span>
                     <img
                       src={displayResultUrl}
                       alt={`Private virtual try-on result for ${displayTitle}`}
                       className="rounded h-44 w-full object-contain mx-auto"
                     />
-                    <span className="text-[10px] text-emerald-700 font-semibold mt-1 block">Neural Try-On Render</span>
+                    <span
+                      className={`text-[10px] font-semibold mt-1 block ${
+                        isLive ? 'text-emerald-700' : isRecorded ? 'text-amber-700' : 'text-stone-600 font-medium'
+                      }`}
+                    >
+                      {isLive ? 'Live Neural Try-On Render' : isRecorded ? 'Verified Recorded Result' : 'Deterministic Sample Fit'}
+                    </span>
                   </div>
                 </div>
 
@@ -173,7 +214,13 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
                   <ArrowRight className="w-3.5 h-3.5 text-stone-dark" />
                   <span>Garment Candidate</span>
                   <ArrowRight className="w-3.5 h-3.5 text-stone-dark" />
-                  <span className="font-semibold text-wearer">YouCam AI Clothes V4 Result</span>
+                  <span className="font-semibold text-wearer">
+                    {isLive
+                      ? 'Live YouCam Clothes V4 Result'
+                      : isRecorded
+                      ? 'Recorded YouCam Clothes V4 Result'
+                      : 'Deterministic Demo Fixture'}
+                  </span>
                 </div>
               </div>
             )}
@@ -199,15 +246,17 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
                   <span className="text-[11px] font-semibold text-ink-muted uppercase block mb-1">
                     Original Reference
                   </span>
-                  {sourceImageUrl ? (
+                  {hasVisibleSource ? (
                     <img
                       src={sourceImageUrl}
                       alt="Original private reference photo"
                       className="rounded shadow max-h-[400px] w-auto mx-auto object-contain"
                     />
                   ) : (
-                    <div className="h-48 bg-stone-light/40 rounded flex items-center justify-center text-xs text-ink-muted">
-                      Source photo protected
+                    <div className="h-48 bg-stone-light/40 rounded flex flex-col items-center justify-center text-xs text-ink-muted space-y-1">
+                      <EyeOff className="w-5 h-5 text-stone-dark" />
+                      <span className="font-semibold text-ink">Wearer Photo Shielded</span>
+                      <span className="text-[10px] text-ink-subtle">Protected by privacy control</span>
                     </div>
                   )}
                 </div>
@@ -227,33 +276,45 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
             {/* View Mode: Source only */}
             {viewMode === 'source' && (
               <div className="relative max-w-md mx-auto">
-                {sourceImageUrl ? (
+                {hasVisibleSource ? (
                   <img
                     src={sourceImageUrl}
                     alt="Original private reference photo"
                     className="rounded shadow-md max-h-[460px] w-auto object-contain"
                   />
                 ) : (
-                  <div className="p-8 text-center text-xs text-ink-muted">
-                    Source photo loaded in session
+                  <div className="p-8 text-center text-xs text-ink-muted space-y-2">
+                    <EyeOff className="w-6 h-6 mx-auto text-stone-dark" />
+                    <p className="font-semibold text-ink">Wearer Photo Shielded</p>
+                    <p className="text-[11px] text-ink-subtle">
+                      Your reference photo is kept in memory. Click "Show My Photo" in the room controls above to view it.
+                    </p>
                   </div>
                 )}
               </div>
             )}
 
-            {/* YouCam Clothes V4 Attribute & Explanation Card */}
+            {/* Provider Mode Provenance & Explanation Card */}
             <div className="w-full max-w-2xl bg-white p-3 rounded-lg border border-stone/80 text-xs space-y-1.5 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-stone/30 pb-1.5">
                 <div className="flex items-center gap-1.5 font-semibold text-ink">
                   <Sparkles className="w-3.5 h-3.5 text-wearer" />
-                  <span>Powered by YouCam AI Clothes V4</span>
+                  <span>
+                    {isLive
+                      ? 'Powered by YouCam AI Clothes V4 (Live Execution)'
+                      : isRecorded
+                      ? 'YouCam AI Clothes V4 (Verified Recorded Result)'
+                      : 'Clothes V4 Integration Protocol (Deterministic Fixture)'}
+                  </span>
                 </div>
-                <span className="text-[10px] font-mono bg-stone-light/60 px-2 py-0.5 rounded text-ink-muted self-start sm:self-auto">
-                  API: /s2s/v2.0/task/cloth-v4
-                </span>
+                <div>{renderModeBadge()}</div>
               </div>
               <p className="text-[11px] text-ink-muted leading-relaxed">
-                YouCam AI Clothes V4 performs neural garment fitting, transferring the candidate piece onto the wearer reference photo while adapting to body contours, pose, and natural lighting.
+                {isLive
+                  ? 'Generated via live server-to-server call to YouCam AI Clothes V4 API (/s2s/v2.0/task/cloth-v4). Neural garment fitting transfers the candidate piece onto the reference photo while adapting to body contours, pose, and natural lighting.'
+                  : isRecorded
+                  ? 'Verified recorded output from YouCam AI Clothes V4 API test execution, preserved for deterministic demonstration with confirmed provider receipt.'
+                  : 'Deterministic offline workflow fixture demonstrating the application\'s integration boundary, consent gating, and private fitting flow without claiming live generation. Synthetic bundled samples are not generated by live provider calls.'}
               </p>
             </div>
           </div>

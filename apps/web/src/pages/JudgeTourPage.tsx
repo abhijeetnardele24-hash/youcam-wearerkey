@@ -88,7 +88,7 @@ export const JudgeTourPage: React.FC = () => {
           </h3>
           <p className="text-xs text-ink-muted max-w-md mx-auto">
             Generates an instant session with a sanitized reference photo, permitted categories, and
-            an active YouCam Clothes V4 try-on task ready for review.
+            a deterministic workflow demonstration of the Clothes V4 integration boundary.
           </p>
           {error && (
             <div className="p-3 rounded bg-rust-light text-rust text-xs font-medium border border-rust">

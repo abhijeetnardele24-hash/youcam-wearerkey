@@ -1,12 +1,17 @@
 {
-  "evaluated_commit_sha": "17bab559b8f873a1a2c901c63c208df3d614bb54",
+  "evaluated_commit_sha": "8b71221b7b59692dd60dd0075df82315483d7e75",
+  "evidence_authority": "LOCAL_DOCUMENTATION_SNAPSHOT",
   "provider_mode": "DEMO_FIXTURE",
   "endpoint": "https://yce-api-01.makeupar.com",
-  "timestamp": "2026-10-30T18:12:09.138Z",
+  "timestamp": "2026-11-02T08:36:15.796Z",
   "connectivity_status": "BLOCKED_MISSING_KEY",
   "http_status": 0,
   "live_execution_verified": false,
+  "generation_verified": false,
+  "image_verified": false,
+  "deletion_verified": false,
   "model_name": "YouCam AI Clothes V4",
-  "reason": "YOUCAM_API_KEY not configured. System operating in deterministic DEMO_FIXTURE / RECORDED_LIVE_RESULT mode without fabricating live execution.",
-  "evidence_authority": "LOCAL_DOCUMENTATION_SNAPSHOT"
+  "api_family": "AI_CLOTHES_V4",
+  "privacy_notice": "Personal photographic hashes are salted or masked to prevent cross-dataset correlatability while preserving ledger integrity.",
+  "reason": "YOUCAM_API_KEY not configured. System operating in deterministic DEMO_FIXTURE / RECORDED_LIVE_RESULT mode without fabricating live execution."
 }

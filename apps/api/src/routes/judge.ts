@@ -77,15 +77,32 @@ export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
       ephemeralImageStore.saveGarment(prop.id, fs.readFileSync(garmentSample), "image/png");
     }
 
-    const providerMode = "RECORDED_LIVE_RESULT";
+    // Determine provider mode strictly based on validated recorded-result manifest evidence
+    let providerMode: "LIVE_YOUCAM" | "RECORDED_LIVE_RESULT" | "DEMO_FIXTURE" = "DEMO_FIXTURE";
+    const manifestPath = path.resolve(__dirname, "../../docs/recorded-result-manifest.json");
+    if (fs.existsSync(manifestPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+        if (
+          manifest.provenance === "CONFIRMED_PROVIDER_EXECUTION" &&
+          manifest.result_image_sha256 &&
+          manifest.task_id_hash &&
+          manifest.evaluated_commit_sha
+        ) {
+          providerMode = "RECORDED_LIVE_RESULT";
+        }
+      } catch {
+        providerMode = "DEMO_FIXTURE";
+      }
+    }
 
-    // 3. Seed Provider Task with Recorded / Fixture Result
+    // 3. Seed Provider Task with Truthful Mode (DEMO_FIXTURE unless evidence exists)
     await db.insert(providerTasks).values({
       proposalId: prop.id,
       provider: "YOUCAM",
       mode: providerMode,
       apiFamily: "AI_CLOTHES_V4",
-      taskIdCiphertext: encryptProviderIdentifier("recorded_judge_task_v4_success", config.ENCRYPTION_KEY_HEX),
+      taskIdCiphertext: encryptProviderIdentifier("judge_fixture_task_v4", config.ENCRYPTION_KEY_HEX),
       resultUrlCiphertext: encryptProviderIdentifier("/assets/sample_vto_result.png", config.ENCRYPTION_KEY_HEX),
       estimatedUnits: 2,
       observedUnits: 2,
@@ -155,7 +172,7 @@ export const judgeRoutes: FastifyPluginAsync = async (fastify) => {
       helper_url: `/helper#bootstrap=${helperBootstrapCode}`,
       status: "ACTIVE",
       mode: providerMode,
-      message: "Judge sample session seeded successfully with verified deterministic V4 result."
+      message: "Judge sample session seeded successfully with deterministic workflow demonstration of the Clothes V4 integration boundary."
     });
   });
 };

@@ -192,5 +192,34 @@ describe("Fail-Closed Claims & Evidence Integrity Auditor", () => {
     expect(updated.evidence_authority).toBe("LOCAL_DOCUMENTATION_SNAPSHOT");
     expect(fs.existsSync(path.join(tempDir, "docs/ci-evidence-snapshot.json"))).toBe(true);
   });
+
+  it("fails closed when evidence-index.json claims test files that did not exist in the evaluated commit", () => {
+    fs.writeFileSync(
+      path.join(tempDir, "docs/evidence-index.json"),
+      JSON.stringify({
+        project: "WearerKey",
+        evaluated_commit_sha: "8b71221b7b59692dd60dd0075df82315483d7e75",
+        evidence: {
+          test_suites: {
+            vitest_unit_and_integration: {
+              total: 80,
+              passed: 80,
+              files: ["tests/unit/non-existent-fabricated-test.ts"]
+            },
+            playwright_browser_e2e: { total: 10, passed: 10 }
+          }
+        }
+      })
+    );
+
+    const res = runClaimsCheck({
+      cwd: tempDir,
+      strictSha: false
+    });
+
+    expect(res.passed).toBe(false);
+    expect(res.errors.some((e) => e.includes("Evidence integrity violation"))).toBe(true);
+    expect(res.errors.some((e) => e.includes("non-existent-fabricated-test.ts"))).toBe(true);
+  });
 });
 

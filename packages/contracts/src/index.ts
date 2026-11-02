@@ -135,6 +135,7 @@ export const WearerProposalDTOSchema = z.object({
   has_result: z.boolean(),
   result_stream_url: z.string().nullable().optional(),
   garment_preview_url: z.string().nullable().optional(),
+  provider_mode: ProviderModeSchema.default("DEMO_FIXTURE"),
   failure_code: z.string().nullable().optional(),
   failure_message_safe: z.string().nullable().optional(),
   created_at: z.string().datetime(),

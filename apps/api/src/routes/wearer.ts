@@ -48,6 +48,7 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
 
         const task = taskRows[0];
         const hasResult = !!(task && task.providerStatus === "SUCCEEDED" && task.resultUrlCiphertext);
+        const providerMode = (task?.mode as any) || "DEMO_FIXTURE";
 
         proposalDTOs.push({
           id: p.id,
@@ -63,6 +64,7 @@ export const wearerRoutes: FastifyPluginAsync = async (fastify) => {
           has_result: hasResult,
           result_stream_url: hasResult ? `/api/wearer/proposals/${p.id}/result` : null,
           garment_preview_url: `/api/wearer/proposals/${p.id}/garment`,
+          provider_mode: providerMode,
           failure_code: p.failureCode,
           failure_message_safe: p.failureMessageSafe,
           created_at: p.createdAt.toISOString(),

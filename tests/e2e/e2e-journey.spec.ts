@@ -257,4 +257,35 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     await wearerContext.close();
     await helperContext.close();
   });
+
+  test('Wearer photo toggle completely suppresses reference photo across all views', async ({ page }) => {
+    // 1. Launch Judge Tour to seed session
+    await page.goto('/judge');
+    const launchBtn = page.getByRole('button', { name: /Launch Interactive Split-Screen/i });
+    await launchBtn.click();
+    await expect(page.getByText(/Operating Mode:|Active Seed:/i)).toBeVisible({ timeout: 15000 });
+
+    // Access Wearer Room iframe directly in split view
+    const wearerFrame = page.frameLocator('iframe[title="Wearer Room"]');
+    await expect(wearerFrame.getByRole('heading', { name: 'Tailored Camel Wool Overcoat' })).toBeVisible({ timeout: 15000 });
+
+    // Privacy default: showSourcePhoto starts false, so photo is shielded initially
+    const showBtn = wearerFrame.getByRole('button', { name: /Show My Photo/i });
+    await expect(showBtn).toBeVisible({ timeout: 10000 });
+    expect(await wearerFrame.locator('img[alt="Original private wearer reference"]').count()).toBe(0);
+    await expect(wearerFrame.getByText(/Wearer Photo Shielded/i).first()).toBeVisible();
+
+    // Toggle: click "Show My Photo" to reveal
+    await showBtn.click();
+    const hideBtn = wearerFrame.getByRole('button', { name: /Hide My Photo \(All Views\)/i });
+    await expect(hideBtn).toBeVisible({ timeout: 5000 });
+    expect(await wearerFrame.locator('img[alt="Original private wearer reference"]').count()).toBeGreaterThan(0);
+
+    // Toggle: click "Hide My Photo (All Views)" to suppress across all views
+    await hideBtn.click();
+    await expect(wearerFrame.getByRole('button', { name: /Show My Photo/i })).toBeVisible({ timeout: 5000 });
+    expect(await wearerFrame.locator('img[alt="Original private wearer reference"]').count()).toBe(0);
+    expect(await wearerFrame.locator('img[alt="Wearer private reference"]').count()).toBe(0);
+    await expect(wearerFrame.getByText(/Wearer Photo Shielded/i).first()).toBeVisible();
+  });
 });

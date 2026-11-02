@@ -221,7 +221,36 @@ export function runClaimsCheck(options: CheckClaimsOptions = {}): CheckClaimsRes
         }
         fs.writeFileSync(evidenceIndexPath, JSON.stringify(evidence, null, 2));
       }
-      // NOTE: SHA-matching check intentionally removed (same rationale as above).
+
+      // Exact historical git tree verification of claimed test files
+      const evalSha = evidence.evaluated_commit_sha;
+      const claimedFiles = evidence.evidence?.test_suites?.vitest_unit_and_integration?.files;
+      if (evalSha && /^[0-9a-f]{40}$/i.test(evalSha) && Array.isArray(claimedFiles) && claimedFiles.length > 0) {
+        let commitExists = false;
+        let gitCwd = rootDir;
+        try {
+          execSync(`git cat-file -e ${evalSha}`, { cwd: rootDir, stdio: ["ignore", "ignore", "pipe"] });
+          commitExists = true;
+        } catch {
+          try {
+            execSync(`git cat-file -e ${evalSha}`, { cwd: process.cwd(), stdio: ["ignore", "ignore", "pipe"] });
+            commitExists = true;
+            gitCwd = process.cwd();
+          } catch {
+            commitExists = false;
+          }
+        }
+
+        if (commitExists) {
+          for (const file of claimedFiles) {
+            try {
+              execSync(`git cat-file -e ${evalSha}:${file}`, { cwd: gitCwd, stdio: ["ignore", "ignore", "pipe"] });
+            } catch {
+              errors.push(`Evidence integrity violation: Claimed test file "${file}" did not exist in evaluated commit ${evalSha}.`);
+            }
+          }
+        }
+      }
     } catch (e: any) {
       errors.push(`Malformed docs/evidence-index.json: ${e.message}`);
     }

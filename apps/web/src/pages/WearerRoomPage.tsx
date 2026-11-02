@@ -401,9 +401,10 @@ export const WearerRoomPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowSourcePhoto(!showSourcePhoto)}
-                className="text-wearer hover:underline font-semibold"
+                aria-pressed={showSourcePhoto}
+                className="text-wearer hover:underline font-semibold text-xs"
               >
-                {showSourcePhoto ? 'Hide Photo' : 'Preview My Photo'}
+                {showSourcePhoto ? 'Hide My Photo (All Views)' : 'Show My Photo'}
               </button>
             )}
           </div>
@@ -471,7 +472,9 @@ export const WearerRoomPage: React.FC = () => {
                 <PrivateMirror
                   resultUrl={proposal.result_stream_url}
                   garmentPreviewUrl={proposal.garment_preview_url}
-                  sourceImageUrl={session.source_image_url || undefined}
+                  sourceImageUrl={showSourcePhoto ? (session.source_image_url || undefined) : undefined}
+                  showSourcePhoto={showSourcePhoto}
+                  providerMode={proposal.provider_mode}
                   status={proposal.status}
                   label={proposal.label}
                   failureMessage={proposal.failure_message_safe}
