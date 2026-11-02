@@ -471,6 +471,7 @@ export const WearerRoomPage: React.FC = () => {
                 <PrivateMirror
                   resultUrl={proposal.result_stream_url}
                   garmentPreviewUrl={proposal.garment_preview_url}
+                  sourceImageUrl={session.source_image_url || undefined}
                   status={proposal.status}
                   label={proposal.label}
                   failureMessage={proposal.failure_message_safe}

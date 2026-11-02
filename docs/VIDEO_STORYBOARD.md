@@ -92,10 +92,10 @@
 - Navigate to **`/judge`**.
 - Click **"Launch Interactive Split-Screen"**.
 - Show both Wearer and Helper perspectives operating side-by-side in real time.
-- Display terminal showing green CI test suite: 70 Vitest unit+integration tests and 10 Playwright browser tests passing, 0 Axe accessibility violations in tested states.
+- Display terminal showing green CI test suite: 80 Vitest unit+integration tests and 10 Playwright browser tests passing, 0 Axe accessibility violations in tested states.
 - Closing title card: **WearerKey — Private Collaborative Virtual Try-On**.
 - Links to GitHub repo and YouCam integration docs.
 
 ### Voiceover / Audio
 > "Hackathon judges can test both roles side-by-side in under 30 seconds using our pre-seeded judge tour at `/judge`.  
-> WearerKey is backed by 70 Vitest tests, 10 Playwright browser tests, 0 Axe accessibility violations in tested states, and zero fabricated claims. Thank you."
+> WearerKey is backed by 80 Vitest tests, 10 Playwright browser tests, 0 Axe accessibility violations in tested states, and zero fabricated claims. Thank you."

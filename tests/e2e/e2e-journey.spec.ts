@@ -40,8 +40,12 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     await expect(launchBtn).toBeVisible();
     await launchBtn.click();
 
-    // Verify successful seeding (No 500 Internal Server Error!)
-    await expect(page.getByText(/Active Seed: RECORDED_LIVE_RESULT|DEMO_FIXTURE/i)).toBeVisible({ timeout: 15000 });
+    // Verify successful seeding (No 500 Internal Server Error!) and provider mode badge truthfulness
+    await expect(page.getByText(/Operating Mode:|Active Seed:/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/RECORDED_LIVE_RESULT|DEMO_FIXTURE/i).first()).toBeVisible();
+
+    // Verify 45-Second Product Story Banner
+    await expect(page.getByText(/45-Second Product Story Walkthrough/i)).toBeVisible();
 
     // Verify tablist accessibility
     const tablist = page.getByRole('tablist', { name: /Tour inspection view mode/i });
@@ -101,7 +105,7 @@ test.describe('WearerKey End-to-End User Journeys & Accessibility', () => {
     await page.goto('/judge');
     const launchBtn = page.getByRole('button', { name: /Launch Interactive Split-Screen/i });
     await launchBtn.click();
-    await expect(page.getByText(/Active Seed:/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Operating Mode:|Active Seed:/i)).toBeVisible({ timeout: 15000 });
 
     // 2. Find Wearer Room iframe and ensure seeded content is loaded
     const wearerFrame = page.frameLocator('iframe[title="Wearer Room"]');

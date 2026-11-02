@@ -54,19 +54,34 @@ For millions of people, this is a privacy barrier due to body sensitivity, perso
 
 ---
 
-## 4. 30-Second Judge Tour
+## 4. Product Screenshots & User Journey
+
+| 1. Interactive Judge Split-Screen (`/judge`) | 2. Server-Enforced Helper Boundary |
+| :---: | :---: |
+| ![Judge Split-Screen](docs/assets/screenshots/03-judge-split-screen.png) | ![Helper Privacy Boundary](docs/assets/screenshots/04-helper-privacy-boundary.png) |
+| *Simultaneous wearer mirror and helper curation views.* | *Zero wearer pixels exposed; helper sees metadata only.* |
+
+| 3. Private Wearer Mirror (`/wearer`) | 4. Tamper-Evident Deletion Receipt (`/receipt`) |
+| :---: | :---: |
+| ![Wearer Private Mirror](docs/assets/screenshots/05-wearer-private-mirror.png) | ![Deletion Receipt](docs/assets/screenshots/07-deletion-receipt.png) |
+| *3-Stage comparison: reference, candidate, and YouCam render.* | *HMAC-SHA256 ledger proving provider deletion responses.* |
+
+---
+
+## 5. 30-Second Judge Tour
 
 We built an interactive, pre-seeded evaluation suite that allows hackathon judges to test both roles side-by-side in under 30 seconds with 1 click:
 
-1. Start the server (or open the public deployment).
+1. Start the server (or open the local deployment at `http://localhost:3000`).
 2. Navigate to **`/judge`**.
 3. Click **"Launch Interactive Split-Screen"**.
 4. Observe the **Wearer Control Room** on the left (showing the full private mirror and decision slip) alongside the **Helper Workspace** on the right (showing permitted categories and proposal tools with **zero wearer images**).
 5. Open browser Developer Tools (`Network` tab) on the Helper pane to verify that zero wearer image requests or payloads are ever sent to the helper.
+6. Inspect the **Judge Evidence Panel** to observe active provider mode, Sharp in-memory sanitization status, and HMAC-SHA256 receipt integrity.
 
 ---
 
-## 4. YouCam AI Clothes V4 Engine Integration
+## 6. YouCam AI Clothes V4 Engine Integration
 
 WearerKey integrates with Perfect Corp's official YouCam Clothes V4 Server-to-Server API:
 - **Base Endpoint:** `https://yce-api-01.makeupar.com` (India region)
@@ -75,7 +90,7 @@ WearerKey integrates with Perfect Corp's official YouCam Clothes V4 Server-to-Se
 - **Asynchronous Polling:** `GET /s2s/v2.0/task/cloth-v4/{taskId}` with exponential backoff.
 - **Remote Deletion:** `DELETE /s2s/v2.0/file/{fileId}` and `POST /s2s/v2.0/task/delete` upon completion.
 - **Fail-Closed Provider Modes:**
-  - `LIVE_YOUCAM`: Active when `YOUCAM_API_KEY` is present.
+  - `LIVE_YOUCAM`: Active when valid `YOUCAM_API_KEY` is present.
   - `RECORDED_LIVE_RESULT`: Transparent replay of genuine YouCam test fixtures when key is unconfigured.
   - `DEMO_FIXTURE`: Deterministic offline evaluation mode.
 
@@ -83,7 +98,7 @@ Verified connectivity receipt is tracked in [`docs/live-youcam-receipt.json`](do
 
 ---
 
-## 5. Quickstart & Local Development
+## 7. Quickstart & Local Development
 
 ### Prerequisites
 - Node.js v20+ or v24+
@@ -117,7 +132,64 @@ Visit `http://localhost:3000` in your browser.
 
 ---
 
-## 6. Monorepo Structure
+## 8. Environment Variables
+
+| Variable | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `PORT` | No | `3000` | Port for the unified Fastify server |
+| `HOST` | No | `0.0.0.0` | Network binding interface |
+| `APP_BASE_URL` | No | `http://localhost:3000` | Base URL used for minted helper invitation links |
+| `YOUCAM_BASE_URL` | No | `https://yce-api-01.makeupar.com` | Official YouCam S2S API endpoint |
+| `YOUCAM_API_KEY` | Optional | `""` | User-provided YouCam API key for live generation |
+| `YOUCAM_PROVIDER_MODE` | No | `DEMO_FIXTURE` | `LIVE_YOUCAM`, `RECORDED_LIVE_RESULT`, or `DEMO_FIXTURE` |
+| `PROVIDER_ID_ENCRYPTION_KEY` | Yes | 64-char hex | AES-256-GCM key encrypting remote task/file IDs at rest |
+| `SESSION_COOKIE_SECRET` | Yes | 64-char hex | Fastify cookie signing secret for HttpOnly session cookies |
+| `RECEIPT_SIGNING_KEY` | Yes | 64-char hex | HMAC-SHA256 key for signing application deletion receipts |
+| `DATABASE_URL` | No | `""` | Optional Postgres connection string (uses embedded PGlite if empty) |
+
+---
+
+## 9. Verification Suite & Reproducible Commands
+
+The repository enforces end-to-end evidence integrity through automated suites:
+
+```bash
+# 1. Lint with zero warnings
+npx eslint . --max-warnings 0
+
+# 2. TypeScript compilation
+pnpm typecheck
+
+# 3. Monorepo production build
+pnpm build
+
+# 4. Vitest Unit & Integration Tests (80 tests across 6 suites)
+pnpm test
+
+# 5. Playwright E2E Browser & Axe Accessibility Scans (10 journeys across Desktop & Mobile 390px)
+pnpm test:e2e
+
+# 6. Security scan across tracked files and complete Git commit history
+npx tsx scripts/security-scan.ts
+
+# 7. Claims and documentation auditor
+npx tsx scripts/check-claims.ts --strict-sha
+
+# 8. Deployment smoke probe
+npx tsx scripts/deploy-smoke.ts http://localhost:3000
+```
+
+---
+
+## 10. Known Limitations & Responsible-Use Disclosures
+
+- **Visual Appearance Preview Only:** WearerKey simulates clothing drape and aesthetic coordination using YouCam AI Clothes V4. It is an aesthetic decision aid, not a certified sizing, tailoring, stretch, or physical fabric guarantee.
+- **Application Ledger Authenticity:** The HMAC-SHA256 signature guarantees application ledger integrity and proves recorded provider HTTP responses. It is not cryptographic proof of external physical deletion on third-party provider infrastructure.
+- **Fail-Closed Provider Gate:** In the absence of a verified live `YOUCAM_API_KEY`, the application operates in transparent `DEMO_FIXTURE` or `RECORDED_LIVE_RESULT` mode with zero fabricated claims.
+
+---
+
+## 11. Monorepo Structure
 
 ```text
 youcam-wearerkey/
@@ -139,6 +211,7 @@ youcam-wearerkey/
 │   ├── PRIVACY_MODEL.md         # Role-separated threat model & authorization invariants
 │   ├── YOUCAM_INTEGRATION.md    # Detailed Perfect Corp Clothes V4 API specification
 │   ├── DEVPOST_SUBMISSION.md    # Complete Devpost submission package
+│   ├── FINAL_VIDEO_SOURCE_PACKAGE.md # Timed 2:30 video recording specification
 │   ├── JUDGE_TOUR.md            # Evaluator 30-second walkthrough guide
 │   ├── THREAT_MODEL.md          # Comprehensive security threat analysis & mitigations
 │   ├── EVALUATION.md            # Full verification report, benchmarks & test ledger
@@ -147,20 +220,12 @@ youcam-wearerkey/
 │   ├── evidence-index.json      # Structured machine-readable compliance index
 │   ├── deployment-receipt.json  # Port setup and deployment verification receipt
 │   └── live-youcam-receipt.json # Truthful machine-verifiable connectivity receipt
-├── scripts/                     # Master verifier, live smoke, security scanner, claims auditor
+├── scripts/                     # Master verifier, live smoke, deploy smoke, security scanner
 └── tests/                       # Unit tests, integration tests & Playwright e2e/axe tests
 ```
 
 ---
 
-## 7. Mandatory AI & VTO Safety Disclosures
-
-> **VISUAL APPEARANCE PREVIEW ONLY**  
-> WearerKey simulates clothing drape and aesthetic coordination using YouCam AI Clothes V4. It is an aesthetic decision aid, not a certified sizing, tailoring, stretch, or physical fabric guarantee.  
-> The system operates fail-closed: it never fabricates live API execution without genuine cryptographic evidence, and strictly ensures helper contexts cannot inspect wearer photos.
-
----
-
-## 8. License
+## 12. License
 
 WearerKey is open-source software licensed under the [MIT License](LICENSE).

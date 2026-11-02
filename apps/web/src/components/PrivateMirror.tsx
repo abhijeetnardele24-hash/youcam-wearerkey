@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, ShieldAlert, Sparkles } from 'lucide-react';
+import { Eye, ShieldAlert, Sparkles, AlertTriangle, ArrowRight } from 'lucide-react';
 
 interface PrivateMirrorProps {
   sourceImageUrl?: string;
@@ -17,22 +17,22 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
   sourceImageUrl,
   resultImageUrl,
   resultUrl,
-  garmentPreviewUrl: _garmentPreviewUrl,
+  garmentPreviewUrl,
   garmentTitle,
   label,
-  status: _status,
-  failureMessage: _failureMessage,
+  status,
+  failureMessage,
   isProcessing = false,
 }) => {
   const displayResultUrl = resultImageUrl || resultUrl || undefined;
   const displayTitle = garmentTitle || label || 'Proposed Garment';
-  const [viewMode, setViewMode] = useState<'result' | 'split' | 'source'>('result');
+  const [viewMode, setViewMode] = useState<'three-stage' | 'result' | 'split' | 'source'>('three-stage');
   const [zoom, setZoom] = useState(false);
 
   return (
     <div className="parcel-card overflow-hidden bg-white border-2 border-wearer/40">
       {/* Header bar */}
-      <div className="bg-wearer text-white px-4 py-2.5 flex items-center justify-between">
+      <div className="bg-wearer text-white px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Eye className="w-4 h-4 text-parchment" />
           <span className="font-semibold text-xs tracking-wider uppercase">
@@ -45,6 +45,15 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
 
         {displayResultUrl && (
           <div className="flex items-center gap-1 bg-wearer-dark/60 rounded p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setViewMode('three-stage')}
+              className={`px-2 py-0.5 rounded transition-colors ${
+                viewMode === 'three-stage' ? 'bg-white text-wearer font-semibold' : 'text-white/80 hover:text-white'
+              }`}
+            >
+              3-Stage Journey
+            </button>
             <button
               type="button"
               onClick={() => setViewMode('result')}
@@ -77,7 +86,7 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
       </div>
 
       {/* Main mirror display canvas */}
-      <div className="relative min-h-[360px] max-h-[560px] bg-parchment-100 flex items-center justify-center p-4 overflow-hidden">
+      <div className="relative min-h-[360px] bg-parchment-100 flex flex-col items-center justify-center p-4 overflow-hidden">
         {isProcessing ? (
           <div className="text-center p-8">
             <div className="w-12 h-12 rounded-full border-4 border-wearer border-t-transparent animate-spin mx-auto mb-4" />
@@ -88,20 +97,94 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
               YouCam AI Clothes V4 is generating your virtual garment fit. This result will stream directly into your private mirror only.
             </p>
           </div>
+        ) : status === 'FAILED' ? (
+          <div className="text-center p-8 text-rust space-y-2">
+            <AlertTriangle className="w-8 h-8 mx-auto text-rust" />
+            <h4 className="font-serif font-bold text-sm text-ink">YouCam Try-On Unsuccessful</h4>
+            <p className="text-xs text-ink-muted max-w-sm mx-auto">
+              {failureMessage || 'The garment could not be fitted by YouCam Clothes V4. Try proposing another garment photo.'}
+            </p>
+          </div>
         ) : !displayResultUrl ? (
           <div className="text-center p-8 text-ink-muted">
             <Sparkles className="w-8 h-8 mx-auto mb-2 text-stone-dark opacity-60" />
-            <p className="text-xs">No try-on generated yet. Click "Generate Try-On" below to render.</p>
+            <p className="text-xs">No try-on generated yet. Click "Request Virtual Try-On" below to render.</p>
           </div>
         ) : (
-          <div className="w-full h-full flex items-center justify-center relative">
+          <div className="w-full flex flex-col items-center justify-center space-y-4">
+            {/* View Mode: Three-Stage Journey (Wearer Photo -> Garment Candidate -> YouCam Result) */}
+            {viewMode === 'three-stage' && (
+              <div className="w-full space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+                  {/* Step 1: Wearer Photo */}
+                  <div className="text-center bg-white p-2.5 rounded border border-stone shadow-sm">
+                    <span className="text-[10px] font-semibold font-mono text-ink-muted uppercase block mb-1">
+                      1. Private Wearer Photo
+                    </span>
+                    {sourceImageUrl ? (
+                      <img
+                        src={sourceImageUrl}
+                        alt="Original private wearer reference"
+                        className="rounded h-44 w-full object-contain mx-auto"
+                      />
+                    ) : (
+                      <div className="h-44 bg-stone-light/30 rounded flex items-center justify-center text-[11px] text-ink-muted px-2">
+                        Wearer reference loaded (protected)
+                      </div>
+                    )}
+                    <span className="text-[10px] text-wearer font-medium mt-1 block">Wearer-Only View</span>
+                  </div>
+
+                  {/* Step 2: Garment Candidate */}
+                  <div className="text-center bg-white p-2.5 rounded border border-stone shadow-sm relative">
+                    <span className="text-[10px] font-semibold font-mono text-ink-muted uppercase block mb-1">
+                      2. Garment Candidate
+                    </span>
+                    {garmentPreviewUrl ? (
+                      <img
+                        src={garmentPreviewUrl}
+                        alt="Proposed garment product"
+                        className="rounded h-44 w-full object-contain mx-auto"
+                      />
+                    ) : (
+                      <div className="h-44 bg-stone-light/30 rounded flex items-center justify-center text-[11px] text-ink-muted px-2">
+                        Product photo
+                      </div>
+                    )}
+                    <span className="text-[10px] text-helper font-medium mt-1 block">Curated by Helper</span>
+                  </div>
+
+                  {/* Step 3: YouCam Result */}
+                  <div className="text-center bg-white p-2.5 rounded border-2 border-wearer shadow-sm">
+                    <span className="text-[10px] font-semibold font-mono text-wearer uppercase block mb-1">
+                      3. YouCam VTO Result
+                    </span>
+                    <img
+                      src={displayResultUrl}
+                      alt={`Private virtual try-on result for ${displayTitle}`}
+                      className="rounded h-44 w-full object-contain mx-auto"
+                    />
+                    <span className="text-[10px] text-emerald-700 font-semibold mt-1 block">Neural Try-On Render</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-center gap-2 text-[11px] text-ink-muted font-mono">
+                  <span>Wearer Photo</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-stone-dark" />
+                  <span>Garment Candidate</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-stone-dark" />
+                  <span className="font-semibold text-wearer">YouCam AI Clothes V4 Result</span>
+                </div>
+              </div>
+            )}
+
             {/* View Mode: Result only */}
             {viewMode === 'result' && (
               <div className="relative max-w-md mx-auto group">
                 <img
                   src={displayResultUrl}
                   alt={`Private virtual try-on result for ${displayTitle}`}
-                  className={`rounded shadow-md max-h-[500px] w-auto object-contain transition-transform duration-200 ${
+                  className={`rounded shadow-md max-h-[460px] w-auto object-contain transition-transform duration-200 ${
                     zoom ? 'scale-125 cursor-zoom-out' : 'cursor-zoom-in'
                   }`}
                   onClick={() => setZoom(!zoom)}
@@ -112,7 +195,7 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
             {/* View Mode: Side by side */}
             {viewMode === 'split' && (
               <div className="grid grid-cols-2 gap-3 w-full max-w-2xl">
-                <div className="text-center">
+                <div className="text-center bg-white p-2 rounded border border-stone">
                   <span className="text-[11px] font-semibold text-ink-muted uppercase block mb-1">
                     Original Reference
                   </span>
@@ -120,7 +203,7 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
                     <img
                       src={sourceImageUrl}
                       alt="Original private reference photo"
-                      className="rounded shadow max-h-[440px] w-auto mx-auto object-contain"
+                      className="rounded shadow max-h-[400px] w-auto mx-auto object-contain"
                     />
                   ) : (
                     <div className="h-48 bg-stone-light/40 rounded flex items-center justify-center text-xs text-ink-muted">
@@ -128,14 +211,14 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
                     </div>
                   )}
                 </div>
-                <div className="text-center">
+                <div className="text-center bg-white p-2 rounded border border-stone">
                   <span className="text-[11px] font-semibold text-wearer uppercase block mb-1">
                     Virtual Try-On
                   </span>
                   <img
                     src={displayResultUrl}
                     alt={`Private try-on result for ${displayTitle}`}
-                    className="rounded shadow max-h-[440px] w-auto mx-auto object-contain"
+                    className="rounded shadow max-h-[400px] w-auto mx-auto object-contain"
                   />
                 </div>
               </div>
@@ -148,7 +231,7 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
                   <img
                     src={sourceImageUrl}
                     alt="Original private reference photo"
-                    className="rounded shadow-md max-h-[500px] w-auto object-contain"
+                    className="rounded shadow-md max-h-[460px] w-auto object-contain"
                   />
                 ) : (
                   <div className="p-8 text-center text-xs text-ink-muted">
@@ -157,6 +240,22 @@ export const PrivateMirror: React.FC<PrivateMirrorProps> = ({
                 )}
               </div>
             )}
+
+            {/* YouCam Clothes V4 Attribute & Explanation Card */}
+            <div className="w-full max-w-2xl bg-white p-3 rounded-lg border border-stone/80 text-xs space-y-1.5 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-stone/30 pb-1.5">
+                <div className="flex items-center gap-1.5 font-semibold text-ink">
+                  <Sparkles className="w-3.5 h-3.5 text-wearer" />
+                  <span>Powered by YouCam AI Clothes V4</span>
+                </div>
+                <span className="text-[10px] font-mono bg-stone-light/60 px-2 py-0.5 rounded text-ink-muted self-start sm:self-auto">
+                  API: /s2s/v2.0/task/cloth-v4
+                </span>
+              </div>
+              <p className="text-[11px] text-ink-muted leading-relaxed">
+                YouCam AI Clothes V4 performs neural garment fitting, transferring the candidate piece onto the wearer reference photo while adapting to body contours, pose, and natural lighting.
+              </p>
+            </div>
           </div>
         )}
       </div>

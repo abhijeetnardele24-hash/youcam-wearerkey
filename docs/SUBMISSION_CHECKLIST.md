@@ -24,7 +24,7 @@
 | **30-Second Judge Tour** | 1-click pre-seeded split-screen evaluation tool at `/judge` | ✅ PASSED | `apps/web/src/pages/JudgeTourPage.tsx` |
 | **Documentation Honesty** | Prohibited marketing buzzwords eliminated; zero unsupported claims | ✅ PASSED | `scripts/check-claims.ts` |
 | **Live YouCam API Execution** | Genuine live S2S execution receipt with verified task ID | ⏳ PENDING | Requires user-provided `YOUCAM_API_KEY` |
-| **Public HTTPS Deployment** | Working public web endpoint for judge inspection | ⏳ PENDING | Cloud hosting deployment |
+| **Public HTTPS Deployment** | Public web endpoint for judge access (valuable enhancer; core requirements are repo, video, description, screenshots) | ⏳ PENDING / LOCAL VERIFIED | Run `scripts/deploy-smoke.ts` |
 | **Demo Video Upload** | 2-3 minute YouTube/Vimeo demo video | ⏳ PENDING | Follow `docs/VIDEO_STORYBOARD.md` |
 | **Devpost Final Form** | Final form submission on Devpost portal | ⏳ PENDING | Follow `docs/DEVPOST_SUBMISSION.md` |
 

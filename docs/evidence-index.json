@@ -17,11 +17,12 @@
     "test_suites": {
       "vitest_unit_and_integration": {
         "status": "PASSED",
-        "total": 70,
-        "passed": 70,
+        "total": 80,
+        "passed": 80,
         "failed": 0,
         "files": [
           "tests/unit/domain.test.ts",
+          "tests/unit/image-sanitizer.test.ts",
           "tests/unit/youcam-provider.test.ts",
           "tests/integration/api.test.ts",
           "tests/unit/live-youcam-smoke.test.ts",

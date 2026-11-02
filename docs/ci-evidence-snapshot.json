@@ -1,6 +1,6 @@
 {
-  "evaluated_commit_sha": "db727dbbe067db7a3d9bb094f2cf18b4558de816",
-  "timestamp": "2026-10-31T15:04:52.547Z",
+  "evaluated_commit_sha": "5b84b2a027e1d36ff0fc902396c8cdd98f349f08",
+  "timestamp": "2026-11-02T08:16:14.354Z",
   "evidence_authority": "CI_GENERATED_ARTIFACT",
-  "artifact_name": "wearerkey-verification-db727dbbe067db7a3d9bb094f2cf18b4558de816"
+  "artifact_name": "wearerkey-verification-5b84b2a027e1d36ff0fc902396c8cdd98f349f08"
 }

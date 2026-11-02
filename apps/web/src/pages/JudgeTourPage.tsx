@@ -35,6 +35,31 @@ export const JudgeTourPage: React.FC = () => {
     }
   };
 
+  const renderProviderBadge = (mode: string) => {
+    if (mode === 'LIVE_YOUCAM') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          LIVE_YOUCAM
+        </span>
+      );
+    }
+    if (mode === 'RECORDED_LIVE_RESULT') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+          <span className="w-2 h-2 rounded-full bg-amber-500" />
+          RECORDED_LIVE_RESULT
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-stone-100 text-stone-700 border border-stone-300">
+        <span className="w-2 h-2 rounded-full bg-stone-400" />
+        DEMO_FIXTURE
+      </span>
+    );
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
       {/* Header */}
@@ -88,15 +113,61 @@ export const JudgeTourPage: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-6">
+          {/* 45-Second Consumer Journey Flow */}
+          <div className="parcel-card p-4 bg-white border border-stone rounded-lg shadow-xs space-y-2">
+            <div className="flex items-center justify-between border-b border-stone/30 pb-1.5">
+              <span className="font-serif font-bold text-xs text-ink uppercase tracking-wider">
+                45-Second Product Story Walkthrough
+              </span>
+              <span className="text-[10px] font-mono text-ink-muted">
+                Zero Wearer Photo Custody Surrendered
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="p-2 rounded bg-parchment-50 border border-stone/50 space-y-1">
+                <div className="font-bold text-ink flex items-center gap-1 text-[11px]">
+                  <span className="w-4 h-4 rounded-full bg-wearer text-white inline-flex items-center justify-center text-[10px]">1</span>
+                  <span>Consent Pass</span>
+                </div>
+                <p className="text-[10px] text-ink-muted leading-tight">
+                  Wearer locks permitted clothing categories & proposal cap.
+                </p>
+              </div>
+              <div className="p-2 rounded bg-parchment-50 border border-stone/50 space-y-1">
+                <div className="font-bold text-ink flex items-center gap-1 text-[11px]">
+                  <span className="w-4 h-4 rounded-full bg-helper text-white inline-flex items-center justify-center text-[10px]">2</span>
+                  <span>Curate Garments</span>
+                </div>
+                <p className="text-[10px] text-ink-muted leading-tight">
+                  Helper proposes real clothing pieces with <strong>zero photo access</strong>.
+                </p>
+              </div>
+              <div className="p-2 rounded bg-parchment-50 border border-stone/50 space-y-1">
+                <div className="font-bold text-ink flex items-center gap-1 text-[11px]">
+                  <span className="w-4 h-4 rounded-full bg-ink text-white inline-flex items-center justify-center text-[10px]">3</span>
+                  <span>YouCam VTO Fit</span>
+                </div>
+                <p className="text-[10px] text-ink-muted leading-tight">
+                  YouCam Clothes V4 renders fitting into <strong>wearer mirror only</strong>.
+                </p>
+              </div>
+              <div className="p-2 rounded bg-parchment-50 border border-stone/50 space-y-1">
+                <div className="font-bold text-ink flex items-center gap-1 text-[11px]">
+                  <span className="w-4 h-4 rounded-full bg-stone-dark text-white inline-flex items-center justify-center text-[10px]">4</span>
+                  <span>Private Decision</span>
+                </div>
+                <p className="text-[10px] text-ink-muted leading-tight">
+                  Wearer casts verdict; session revocation triggers provider file purge.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Controls Bar */}
           <div className="parcel-card p-4 bg-white border border-stone flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="seal-badge seal-helper font-mono text-[10px]">
-                Active Seed: {seedData.mode}
-              </span>
-              <span className="text-xs text-ink-muted">
-                Inspect both roles live below
-              </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-ink-muted">Operating Mode:</span>
+              {renderProviderBadge(seedData.mode)}
             </div>
 
             <div className="flex items-center gap-2">
@@ -173,9 +244,8 @@ export const JudgeTourPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
               <div className="bg-white p-2.5 rounded border border-stone/60 space-y-1">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">Provider Mode & API Family</div>
-                <div className="font-semibold text-ink flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>{seedData.mode}</span>
+                <div className="pt-0.5">
+                  {renderProviderBadge(seedData.mode)}
                 </div>
                 <div className="text-[11px] text-ink-subtle font-mono">YouCam Clothes V4 (s2s/v2.0)</div>
               </div>
